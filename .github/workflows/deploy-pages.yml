@@ -1,4 +1,5 @@
 name: Deploy GitHub Pages
+# keep this workflow file in history to allow manual trigger commits when needed
 
 on:
   push:
