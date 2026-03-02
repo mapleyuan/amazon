@@ -1,0 +1,5 @@
+from __future__ import annotations
+
+from app.db.connection import get_connection
+
+__all__ = ["get_connection"]

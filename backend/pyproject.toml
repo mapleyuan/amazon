@@ -1,0 +1,11 @@
+[project]
+name = "amazon-top-crawler"
+version = "0.1.0"
+description = "Amazon top categories and products crawler with web admin"
+requires-python = ">=3.12"
+
+[tool.black]
+line-length = 100
+
+[tool.isort]
+profile = "black"

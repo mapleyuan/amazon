@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Amazon 热门榜后台</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Amazon 热门榜后台</h1>
+      <p>站点: US / JP / UK | 榜单: Best Sellers / New Releases / Movers & Shakers</p>
+    </header>
+
+    <main>
+      <section class="card">
+        <h2>任务</h2>
+        <div class="row">
+          <select id="site">
+            <option value="amazon.com">amazon.com</option>
+            <option value="amazon.co.jp">amazon.co.jp</option>
+            <option value="amazon.co.uk">amazon.co.uk</option>
+          </select>
+          <select id="board_type">
+            <option value="best_sellers">best_sellers</option>
+            <option value="new_releases">new_releases</option>
+            <option value="movers_and_shakers">movers_and_shakers</option>
+          </select>
+          <button id="runJob">手动触发抓取</button>
+          <button id="refreshJobs">刷新任务列表</button>
+        </div>
+        <pre id="jobs"></pre>
+      </section>
+
+      <section class="card">
+        <h2>排行榜查询</h2>
+        <div class="row">
+          <select id="category_key">
+            <option value="">全部类目</option>
+          </select>
+          <select id="has_price">
+            <option value="1">仅有价格</option>
+            <option value="0">包含无价格</option>
+          </select>
+          <input id="top_n" type="number" min="1" max="100" value="100" placeholder="Top N" />
+          <select id="sort_by">
+            <option value="rank">按排名</option>
+            <option value="rating">按评分</option>
+            <option value="review_count">按评论数</option>
+          </select>
+          <select id="sort_order">
+            <option value="asc">升序</option>
+            <option value="desc">降序</option>
+          </select>
+          <input id="keyword" placeholder="关键词(商品名)" />
+          <button id="searchRanks">查询</button>
+          <button id="cleanupInvalid">清理无价格历史数据</button>
+          <a id="csvExport" href="#" target="_blank">导出 CSV</a>
+          <a id="xlsxExport" href="#" target="_blank">导出 Excel</a>
+        </div>
+        <div id="querySummary"></div>
+        <div class="table-wrap">
+          <table id="ranksTable">
+            <thead>
+              <tr>
+                <th>日期</th><th>站点</th><th>榜单</th><th>类目</th>
+                <th>排名</th><th>ASIN</th><th>商品名</th><th>品牌</th>
+                <th>价格</th><th>评分</th><th>评论数</th><th>详情</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
