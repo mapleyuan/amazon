@@ -1,10 +1,61 @@
-async function api(path, options) {
-  const resp = await fetch(path, options);
-  const contentType = resp.headers.get("content-type") || "";
-  if (contentType.includes("application/json")) {
-    return resp.json();
+const API_BASE_STORAGE_KEY = "amazon_api_base_url";
+
+function normalizeApiBase(url) {
+  return (url || "").trim().replace(/\/+$/, "");
+}
+
+function defaultApiBase() {
+  return `${window.location.protocol}//${window.location.host}`;
+}
+
+let apiBase = defaultApiBase();
+
+function currentApiBase() {
+  return apiBase;
+}
+
+function applyApiBase(nextBase) {
+  const normalized = normalizeApiBase(nextBase);
+  if (normalized) {
+    apiBase = normalized;
+    window.localStorage.setItem(API_BASE_STORAGE_KEY, normalized);
+  } else {
+    apiBase = defaultApiBase();
+    window.localStorage.removeItem(API_BASE_STORAGE_KEY);
   }
-  return resp.text();
+
+  const input = document.getElementById("apiBase");
+  if (input) {
+    input.value = normalized;
+  }
+  document.getElementById("apiBaseCurrent").textContent = currentApiBase();
+}
+
+function initializeApiBase() {
+  const saved = window.localStorage.getItem(API_BASE_STORAGE_KEY) || "";
+  applyApiBase(saved);
+}
+
+function buildApiUrl(path) {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+  if (!path.startsWith("/")) {
+    throw new Error(`invalid api path: ${path}`);
+  }
+  return `${currentApiBase()}${path}`;
+}
+
+async function api(path, options) {
+  const resp = await fetch(buildApiUrl(path), options);
+  const contentType = resp.headers.get("content-type") || "";
+  const payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
+
+  if (!resp.ok) {
+    const message = typeof payload === "string" ? payload : payload.error || JSON.stringify(payload);
+    throw new Error(`请求失败 (${resp.status}): ${message}`);
+  }
+  return payload;
 }
 
 function currentFilters() {
@@ -97,8 +148,8 @@ async function searchRanks() {
     tbody.appendChild(tr);
   });
 
-  document.getElementById("csvExport").href = `/api/export/ranks.csv?${params.toString()}`;
-  document.getElementById("xlsxExport").href = `/api/export/ranks.xlsx?${params.toString()}`;
+  document.getElementById("csvExport").href = buildApiUrl(`/api/export/ranks.csv?${params.toString()}`);
+  document.getElementById("xlsxExport").href = buildApiUrl(`/api/export/ranks.xlsx?${params.toString()}`);
 }
 
 async function cleanupInvalid() {
@@ -123,23 +174,51 @@ async function cleanupInvalid() {
   await searchRanks();
 }
 
-document.getElementById("runJob").addEventListener("click", runJob);
-document.getElementById("refreshJobs").addEventListener("click", refreshJobs);
-document.getElementById("searchRanks").addEventListener("click", searchRanks);
-document.getElementById("cleanupInvalid").addEventListener("click", cleanupInvalid);
-document.getElementById("site").addEventListener("change", async () => {
-  await loadCategories();
-  await searchRanks();
-});
-document.getElementById("board_type").addEventListener("change", async () => {
-  await loadCategories();
-  await searchRanks();
-});
-document.getElementById("category_key").addEventListener("change", searchRanks);
-document.getElementById("has_price").addEventListener("change", searchRanks);
-document.getElementById("top_n").addEventListener("change", searchRanks);
-document.getElementById("sort_by").addEventListener("change", searchRanks);
-document.getElementById("sort_order").addEventListener("change", searchRanks);
+function showError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  window.alert(message);
+}
 
-refreshJobs();
-loadCategories().then(searchRanks);
+async function refreshAllData() {
+  await refreshJobs();
+  await loadCategories();
+  await searchRanks();
+}
+
+initializeApiBase();
+
+document.getElementById("saveApiBase").addEventListener("click", async () => {
+  try {
+    applyApiBase(document.getElementById("apiBase").value);
+    await refreshAllData();
+  } catch (error) {
+    showError(error);
+  }
+});
+
+document.getElementById("resetApiBase").addEventListener("click", async () => {
+  try {
+    applyApiBase("");
+    await refreshAllData();
+  } catch (error) {
+    showError(error);
+  }
+});
+
+document.getElementById("runJob").addEventListener("click", () => runJob().catch(showError));
+document.getElementById("refreshJobs").addEventListener("click", () => refreshJobs().catch(showError));
+document.getElementById("searchRanks").addEventListener("click", () => searchRanks().catch(showError));
+document.getElementById("cleanupInvalid").addEventListener("click", () => cleanupInvalid().catch(showError));
+document.getElementById("site").addEventListener("change", () =>
+  loadCategories().then(searchRanks).catch(showError)
+);
+document.getElementById("board_type").addEventListener("change", () =>
+  loadCategories().then(searchRanks).catch(showError)
+);
+document.getElementById("category_key").addEventListener("change", () => searchRanks().catch(showError));
+document.getElementById("has_price").addEventListener("change", () => searchRanks().catch(showError));
+document.getElementById("top_n").addEventListener("change", () => searchRanks().catch(showError));
+document.getElementById("sort_by").addEventListener("change", () => searchRanks().catch(showError));
+document.getElementById("sort_order").addEventListener("change", () => searchRanks().catch(showError));
+
+refreshAllData().catch(showError);
