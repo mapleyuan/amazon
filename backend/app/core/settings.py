@@ -14,6 +14,7 @@ class Settings:
     mock_crawl: bool
     manual_limit_per_site: int
     detail_enrich_limit: int
+    crawl_category_limit: int
 
 
 def get_settings() -> Settings:
@@ -26,4 +27,5 @@ def get_settings() -> Settings:
         mock_crawl=os.environ.get("AMAZON_MOCK_CRAWL", "0") == "1",
         manual_limit_per_site=int(os.environ.get("AMAZON_MANUAL_LIMIT_PER_SITE", "3")),
         detail_enrich_limit=int(os.environ.get("AMAZON_DETAIL_ENRICH_LIMIT", "0")),
+        crawl_category_limit=int(os.environ.get("AMAZON_CRAWL_CATEGORY_LIMIT", "20")),
     )

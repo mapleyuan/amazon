@@ -13,7 +13,7 @@ DEFAULT_UA = (
 )
 
 
-def fetch_html(url: str, *, site: str, timeout: int = 15) -> str:
+def fetch_html(url: str, *, site: str, timeout: int = 15, max_bytes: int = 600_000) -> str:
     # Add tiny jitter to reduce regular request fingerprints.
     time.sleep(random.uniform(0.2, 0.6))
 
@@ -25,5 +25,17 @@ def fetch_html(url: str, *, site: str, timeout: int = 15) -> str:
         },
     )
 
+    chunk_size = 64 * 1024
+    remaining = max(1, int(max_bytes))
+    chunks: list[bytes] = []
+
     with urlopen(request, timeout=timeout) as resp:
-        return resp.read().decode("utf-8", errors="ignore")
+        while remaining > 0:
+            to_read = min(chunk_size, remaining)
+            chunk = resp.read(to_read)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+
+    return b"".join(chunks).decode("utf-8", errors="ignore")

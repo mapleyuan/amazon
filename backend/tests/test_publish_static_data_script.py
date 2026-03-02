@@ -15,7 +15,7 @@ class PublishStaticDataScriptTests(unittest.TestCase):
             with patch.object(publish_static_data, "WEB_DATA_DIR", base / "data"):
                 with patch.object(
                     publish_static_data,
-                    "crawl_all_rows",
+                    "crawl_all_rows_for_targets",
                     return_value=(
                         "2026-03-02",
                         [
@@ -50,7 +50,7 @@ class PublishStaticDataScriptTests(unittest.TestCase):
             with patch.object(publish_static_data, "WEB_DATA_DIR", base / "data"):
                 with patch.object(
                     publish_static_data,
-                    "crawl_all_rows",
+                    "crawl_all_rows_for_targets",
                     return_value=(
                         "2026-03-02",
                         [
@@ -80,6 +80,24 @@ class PublishStaticDataScriptTests(unittest.TestCase):
                 self.assertIn('"last_success_date"', manifest_text)
                 self.assertIn('"status"', manifest_text)
                 self.assertIn('"default_filters"', manifest_text)
+
+    def test_main_passes_selected_sites_and_boards_to_crawl(self) -> None:
+        from scripts import publish_static_data
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            with patch.object(publish_static_data, "WEB_DATA_DIR", base / "data"):
+                with patch.object(
+                    publish_static_data,
+                    "crawl_all_rows_for_targets",
+                    return_value=("2026-03-02", []),
+                ) as mocked_crawl:
+                    publish_static_data.main(["--sites", "amazon.com", "--boards", "best_sellers"])
+
+                mocked_crawl.assert_called_once_with(
+                    sites=["amazon.com"],
+                    boards=["best_sellers"],
+                )
 
 
 if __name__ == "__main__":

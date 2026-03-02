@@ -122,7 +122,8 @@ def crawl_site_board(site: str, board_type: str) -> list[dict]:
 
     rows: list[dict] = []
     snapshot = datetime.now(timezone.utc).date().isoformat()
-    for href, category_name in category_links[:20]:
+    category_limit = max(1, int(settings.crawl_category_limit))
+    for href, category_name in category_links[:category_limit]:
         url = href if href.startswith("http") else f"{SITE_BASE[site]}{href}"
         category_html = fetch_html(url, site=site)
         if contains_block_page(category_html):

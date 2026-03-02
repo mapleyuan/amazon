@@ -70,12 +70,16 @@ def _cleanup_old_daily_files(allowed_dates: list[str]) -> None:
 
 
 def crawl_all_rows() -> tuple[str, list[dict[str, Any]]]:
+    return crawl_all_rows_for_targets(sites=SITES, boards=BOARDS)
+
+
+def crawl_all_rows_for_targets(*, sites: list[str], boards: list[str]) -> tuple[str, list[dict[str, Any]]]:
     snapshot_date = datetime.now(timezone.utc).date().isoformat()
     rows: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str, str, str]] = set()
 
-    for site in SITES:
-        for board_type in BOARDS:
+    for site in sites:
+        for board_type in boards:
             board_rows = crawl_site_board(site, board_type)
             for row in board_rows:
                 normalized = dict(row)
@@ -97,22 +101,52 @@ def crawl_all_rows() -> tuple[str, list[dict[str, Any]]]:
     return snapshot_date, rows
 
 
+def _parse_csv_values(raw: str, choices: list[str], flag_name: str) -> list[str]:
+    if not raw:
+        return list(choices)
+
+    values = [item.strip() for item in raw.split(",") if item.strip()]
+    if not values:
+        return list(choices)
+
+    invalid = [item for item in values if item not in choices]
+    if invalid:
+        raise ValueError(f"invalid {flag_name}: {', '.join(invalid)}")
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        deduped.append(value)
+    return deduped
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = ArgumentParser(description="Publish static daily data for GitHub Pages")
     parser.add_argument("--retention-days", type=int, default=DEFAULT_RETENTION_DAYS)
+    parser.add_argument("--sites", default="", help="Comma separated sites, e.g. amazon.com,amazon.co.jp")
+    parser.add_argument(
+        "--boards",
+        default="",
+        help="Comma separated boards, e.g. best_sellers,new_releases,movers_and_shakers",
+    )
     args = parser.parse_args(argv or [])
 
     generated_at = _utc_now()
     previous_manifest = _read_json(_manifest_path())
     existing_dates = _collect_existing_dates(previous_manifest)
     retention_days = max(1, int(args.retention_days))
+    sites = _parse_csv_values(args.sites, SITES, "sites")
+    boards = _parse_csv_values(args.boards, BOARDS, "boards")
 
     status = "success"
     message = ""
     available_dates = existing_dates
 
     try:
-        snapshot_date, rows = crawl_all_rows()
+        snapshot_date, rows = crawl_all_rows_for_targets(sites=sites, boards=boards)
         if not rows:
             raise RuntimeError("crawl returned no rows")
 
