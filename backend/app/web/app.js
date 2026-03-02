@@ -1,14 +1,36 @@
 const MANIFEST_PATH = "./data/manifest.json";
 const DAILY_PATH_PREFIX = "./data/daily/";
 
+const STATUS_CLASSES = [
+  "status-success",
+  "status-stale",
+  "status-loading",
+  "status-empty",
+  "status-error",
+];
+
 let manifest = null;
 let dailyPayload = null;
 let filteredItems = [];
+const dailyCache = new Map();
+
+const compareState = {
+  enabled: false,
+  prevDate: null,
+  prevPayload: null,
+  diffMap: new Map(),
+  stats: { up: 0, down: 0, same: 0, fresh: 0 },
+};
 
 function setText(id, value) {
   const el = document.getElementById(id);
   if (!el) return;
   el.textContent = value ?? "";
+}
+
+function showError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  window.alert(message);
 }
 
 async function loadJson(path) {
@@ -30,13 +52,44 @@ function getManifestDates() {
   return manifest.available_dates.filter((d) => typeof d === "string" && d.trim());
 }
 
+function normalizeSourceLabel(source) {
+  const raw = String(source || "").trim().toLowerCase();
+  if (raw === "auto") return "自动任务";
+  if (raw === "manual") return "手动触发";
+  return "未知";
+}
+
+function updateStatusBanner(status, message) {
+  const banner = document.getElementById("statusBanner");
+  if (!banner) return;
+
+  STATUS_CLASSES.forEach((cls) => banner.classList.remove(cls));
+
+  const normalized = ["success", "stale", "loading", "empty"].includes(status) ? status : "error";
+  banner.classList.add(`status-${normalized}`);
+
+  let text = "数据加载中";
+  if (normalized === "success") text = "数据正常，可筛选和导出";
+  if (normalized === "stale") text = "抓取失败，已回退到最近成功数据";
+  if (normalized === "empty") text = "暂无可用数据";
+  if (normalized === "error") text = "数据加载失败";
+
+  if (message) {
+    text = `${text}（${message}）`;
+  }
+  banner.textContent = text;
+}
+
 function renderStatus() {
   const status = manifest?.status || "empty";
   const message = manifest?.message || "";
   const statusText = message ? `${status} (${message})` : status;
+
   setText("dataStatus", statusText);
+  setText("dataSource", normalizeSourceLabel(manifest?.source));
   setText("lastSuccessDate", manifest?.last_success_date || "-");
   setText("lastAttemptAt", manifest?.last_attempt_at || "-");
+  updateStatusBanner(status, message);
 }
 
 function applyDefaultFilters() {
@@ -77,6 +130,31 @@ function populateDateOptions() {
   }
 }
 
+function renderRecentDateButtons() {
+  const container = document.getElementById("recentDateButtons");
+  if (!container) return;
+
+  const dates = getManifestDates().slice(0, 7);
+  const selectedDate = document.getElementById("snapshot_date").value;
+  container.innerHTML = "";
+
+  if (!dates.length) {
+    return;
+  }
+
+  dates.forEach((date) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `date-chip${date === selectedDate ? " active" : ""}`;
+    button.textContent = date;
+    button.addEventListener("click", () => {
+      document.getElementById("snapshot_date").value = date;
+      handleDateChange(date).catch(showError);
+    });
+    container.appendChild(button);
+  });
+}
+
 function currentFilters() {
   return {
     site: document.getElementById("site").value,
@@ -88,6 +166,59 @@ function currentFilters() {
     sortOrder: document.getElementById("sort_order").value,
     keyword: document.getElementById("keyword").value.trim().toLowerCase(),
   };
+}
+
+function sortFilteredItems(items, sortBy, sortOrder) {
+  const direction = sortOrder === "desc" ? -1 : 1;
+  const withIndex = items.map((item, index) => ({ item, index }));
+
+  withIndex.sort((left, right) => {
+    const a = parseNumber(left.item[sortBy]);
+    const b = parseNumber(right.item[sortBy]);
+
+    if (a === null && b === null) return left.index - right.index;
+    if (a === null) return 1;
+    if (b === null) return -1;
+    if (a !== b) return (a - b) * direction;
+
+    const rankA = parseNumber(left.item.rank) ?? Number.MAX_SAFE_INTEGER;
+    const rankB = parseNumber(right.item.rank) ?? Number.MAX_SAFE_INTEGER;
+    if (rankA !== rankB) return rankA - rankB;
+    return left.index - right.index;
+  });
+
+  return withIndex.map((entry) => entry.item);
+}
+
+function filterItemsFromPayload(payload, filters) {
+  if (!payload || !Array.isArray(payload.items)) return [];
+
+  const topN = Math.max(1, parseInt(filters.topN || "100", 10));
+  const requirePrice = !["0", "false", "no"].includes(String(filters.hasPrice).toLowerCase());
+
+  const scoped = payload.items.filter((item) => {
+    if (item.site !== filters.site) return false;
+    if (item.board_type !== filters.boardType) return false;
+    if (filters.categoryKey && item.category_key !== filters.categoryKey) return false;
+
+    const rank = parseNumber(item.rank);
+    if (rank !== null && rank > topN) return false;
+
+    if (requirePrice) {
+      const priceText = String(item.price_text || "").trim();
+      if (!priceText) return false;
+    }
+
+    if (filters.keyword) {
+      const title = String(item.title || "").toLowerCase();
+      const asin = String(item.asin || "").toLowerCase();
+      if (!title.includes(filters.keyword) && !asin.includes(filters.keyword)) return false;
+    }
+
+    return true;
+  });
+
+  return sortFilteredItems(scoped, filters.sortBy, filters.sortOrder);
 }
 
 function rebuildCategoryOptions() {
@@ -115,63 +246,51 @@ function rebuildCategoryOptions() {
   }
 }
 
-function sortFilteredItems(items, sortBy, sortOrder) {
-  const direction = sortOrder === "desc" ? -1 : 1;
-  const withIndex = items.map((item, index) => ({ item, index }));
-
-  withIndex.sort((left, right) => {
-    const a = parseNumber(left.item[sortBy]);
-    const b = parseNumber(right.item[sortBy]);
-
-    if (a === null && b === null) {
-      // Keep stable order for all-null values.
-      return left.index - right.index;
-    }
-    if (a === null) return 1;
-    if (b === null) return -1;
-    if (a !== b) return (a - b) * direction;
-
-    const rankA = parseNumber(left.item.rank) ?? Number.MAX_SAFE_INTEGER;
-    const rankB = parseNumber(right.item.rank) ?? Number.MAX_SAFE_INTEGER;
-    if (rankA !== rankB) return rankA - rankB;
-    return left.index - right.index;
-  });
-
-  return withIndex.map((entry) => entry.item);
+function compareKey(item) {
+  return `${item.site}||${item.board_type}||${item.category_key}||${item.asin}`;
 }
 
-function filterItems() {
-  if (!dailyPayload || !Array.isArray(dailyPayload.items)) {
-    return [];
-  }
-
-  const filters = currentFilters();
-  const topN = Math.max(1, parseInt(filters.topN || "100", 10));
-  const requirePrice = !["0", "false", "no"].includes(String(filters.hasPrice).toLowerCase());
-
-  const scoped = dailyPayload.items.filter((item) => {
-    if (item.site !== filters.site) return false;
-    if (item.board_type !== filters.boardType) return false;
-    if (filters.categoryKey && item.category_key !== filters.categoryKey) return false;
-
-    const rank = parseNumber(item.rank);
-    if (rank !== null && rank > topN) return false;
-
-    if (requirePrice) {
-      const priceText = String(item.price_text || "").trim();
-      if (!priceText) return false;
-    }
-
-    if (filters.keyword) {
-      const title = String(item.title || "").toLowerCase();
-      const asin = String(item.asin || "").toLowerCase();
-      if (!title.includes(filters.keyword) && !asin.includes(filters.keyword)) return false;
-    }
-
-    return true;
+function buildCompareData(todayItems, prevPayload, filters) {
+  const prevItems = filterItemsFromPayload(prevPayload, filters);
+  const prevRankMap = new Map();
+  prevItems.forEach((item) => {
+    prevRankMap.set(compareKey(item), parseNumber(item.rank));
   });
 
-  return sortFilteredItems(scoped, filters.sortBy, filters.sortOrder);
+  const diffMap = new Map();
+  const stats = { up: 0, down: 0, same: 0, fresh: 0 };
+
+  todayItems.forEach((item) => {
+    const key = compareKey(item);
+    const todayRank = parseNumber(item.rank);
+    const prevRank = prevRankMap.get(key);
+
+    if (prevRank === undefined || prevRank === null) {
+      diffMap.set(key, "新上榜");
+      stats.fresh += 1;
+      return;
+    }
+    if (todayRank === null) {
+      diffMap.set(key, "-");
+      return;
+    }
+
+    const delta = prevRank - todayRank;
+    if (delta > 0) {
+      diffMap.set(key, `↑${delta}`);
+      stats.up += 1;
+      return;
+    }
+    if (delta < 0) {
+      diffMap.set(key, `↓${Math.abs(delta)}`);
+      stats.down += 1;
+      return;
+    }
+    diffMap.set(key, "持平");
+    stats.same += 1;
+  });
+
+  return { diffMap, stats };
 }
 
 function renderTable(items) {
@@ -182,12 +301,15 @@ function renderTable(items) {
     const tr = document.createElement("tr");
     const detailUrl = item.detail_url || "";
     const detailCell = detailUrl ? `<a href="${detailUrl}" target="_blank" rel="noreferrer">打开</a>` : "";
+    const change = compareState.enabled ? compareState.diffMap.get(compareKey(item)) || "-" : "-";
+
     tr.innerHTML = `
       <td>${item.snapshot_date || ""}</td>
       <td>${item.site || ""}</td>
       <td>${item.board_type || ""}</td>
       <td>${item.category_name || item.category_key || ""}</td>
       <td>${item.rank ?? ""}</td>
+      <td>${change}</td>
       <td>${item.asin || ""}</td>
       <td>${item.title || ""}</td>
       <td>${item.brand || ""}</td>
@@ -202,7 +324,14 @@ function renderTable(items) {
 
 function renderSummary() {
   const date = document.getElementById("snapshot_date").value || "-";
-  setText("querySummary", `日期: ${date} | 结果数: ${filteredItems.length}`);
+  let summary = `日期: ${date} | 结果数: ${filteredItems.length}`;
+
+  if (compareState.enabled && compareState.prevDate) {
+    const stats = compareState.stats;
+    summary += ` | 对比 ${compareState.prevDate}: 上升 ${stats.up} 下降 ${stats.down} 新上榜 ${stats.fresh} 持平 ${stats.same}`;
+  }
+
+  setText("querySummary", summary);
 }
 
 function escapeCsv(value) {
@@ -220,6 +349,7 @@ function buildCsv(items) {
     "board_type",
     "category_name",
     "rank",
+    "day_change",
     "asin",
     "title",
     "brand",
@@ -228,9 +358,14 @@ function buildCsv(items) {
     "review_count",
     "detail_url",
   ];
+
   const lines = [headers.join(",")];
   items.forEach((item) => {
-    lines.push(headers.map((key) => escapeCsv(item[key])).join(","));
+    const record = {
+      ...item,
+      day_change: compareState.enabled ? compareState.diffMap.get(compareKey(item)) || "" : "",
+    };
+    lines.push(headers.map((key) => escapeCsv(record[key])).join(","));
   });
   return lines.join("\n");
 }
@@ -254,24 +389,81 @@ function downloadCsv() {
   URL.revokeObjectURL(url);
 }
 
+function clearCompareState() {
+  compareState.enabled = false;
+  compareState.prevDate = null;
+  compareState.prevPayload = null;
+  compareState.diffMap = new Map();
+  compareState.stats = { up: 0, down: 0, same: 0, fresh: 0 };
+}
+
 function applyFilters() {
-  filteredItems = filterItems();
+  const filters = currentFilters();
+  filteredItems = filterItemsFromPayload(dailyPayload, filters);
+
+  if (compareState.enabled && compareState.prevPayload) {
+    const compareData = buildCompareData(filteredItems, compareState.prevPayload, filters);
+    compareState.diffMap = compareData.diffMap;
+    compareState.stats = compareData.stats;
+  } else {
+    compareState.diffMap = new Map();
+    compareState.stats = { up: 0, down: 0, same: 0, fresh: 0 };
+  }
+
   renderTable(filteredItems);
   renderSummary();
+}
+
+async function getDailyPayload(date) {
+  if (dailyCache.has(date)) {
+    return dailyCache.get(date);
+  }
+  const path = `${DAILY_PATH_PREFIX}${encodeURIComponent(date)}.json`;
+  const payload = await loadJson(path);
+  dailyCache.set(date, payload);
+  return payload;
 }
 
 async function loadDailyPayload(date) {
   if (!date) {
     dailyPayload = null;
     filteredItems = [];
+    clearCompareState();
     renderTable([]);
     renderSummary();
     return;
   }
 
-  const path = `${DAILY_PATH_PREFIX}${encodeURIComponent(date)}.json`;
-  dailyPayload = await loadJson(path);
+  dailyPayload = await getDailyPayload(date);
+  clearCompareState();
   rebuildCategoryOptions();
+  applyFilters();
+}
+
+async function handleDateChange(date) {
+  await loadDailyPayload(date);
+  renderRecentDateButtons();
+}
+
+async function compareWithPreviousDay() {
+  const currentDate = document.getElementById("snapshot_date").value;
+  const dates = getManifestDates();
+  const currentIndex = dates.indexOf(currentDate);
+  if (currentIndex < 0 || currentIndex === dates.length - 1) {
+    window.alert("没有可对比的昨日数据。");
+    return;
+  }
+
+  const prevDate = dates[currentIndex + 1];
+  const prevPayload = await getDailyPayload(prevDate);
+  compareState.enabled = true;
+  compareState.prevDate = prevDate;
+  compareState.prevPayload = prevPayload;
+  applyFilters();
+}
+
+function clearCompare() {
+  clearCompareState();
   applyFilters();
 }
 
@@ -281,6 +473,7 @@ async function initialize() {
   } catch (error) {
     manifest = {
       status: "empty",
+      source: "unknown",
       message: error instanceof Error ? error.message : String(error),
       available_dates: [],
       default_filters: {},
@@ -292,11 +485,10 @@ async function initialize() {
   renderStatus();
   applyDefaultFilters();
   populateDateOptions();
+  renderRecentDateButtons();
 
   document.getElementById("snapshot_date").addEventListener("change", () => {
-    loadDailyPayload(document.getElementById("snapshot_date").value).catch((error) => {
-      window.alert(error instanceof Error ? error.message : String(error));
-    });
+    handleDateChange(document.getElementById("snapshot_date").value).catch(showError);
   });
   document.getElementById("site").addEventListener("change", () => {
     rebuildCategoryOptions();
@@ -313,13 +505,17 @@ async function initialize() {
   document.getElementById("sort_order").addEventListener("change", applyFilters);
   document.getElementById("searchRanks").addEventListener("click", applyFilters);
   document.getElementById("downloadCsv").addEventListener("click", downloadCsv);
+  document.getElementById("compareYesterday").addEventListener("click", () => {
+    compareWithPreviousDay().catch(showError);
+  });
+  document.getElementById("clearCompare").addEventListener("click", clearCompare);
 
-  await loadDailyPayload(document.getElementById("snapshot_date").value);
+  await handleDateChange(document.getElementById("snapshot_date").value);
 }
 
 initialize().catch((error) => {
   setText("dataStatus", "error");
-  const message = error instanceof Error ? error.message : String(error);
-  window.alert(message);
+  updateStatusBanner("error", "");
+  showError(error);
 });
 

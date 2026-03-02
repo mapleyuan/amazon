@@ -62,6 +62,43 @@ button {
   cursor: pointer;
 }
 
+.status-card {
+  border-left: 6px solid #0f766e;
+}
+
+.status-banner {
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.status-success {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.status-stale {
+  background: #fff7ed;
+  color: #9a3412;
+  border: 1px solid #fdba74;
+}
+
+.status-error,
+.status-empty {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.status-loading {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #93c5fd;
+}
+
 .muted {
   margin: 0;
   color: #4b5563;
@@ -79,6 +116,22 @@ code {
 #querySummary {
   font-size: 14px;
   color: #334155;
+}
+
+#recentDateButtons {
+  margin-top: 6px;
+}
+
+#recentDateButtons .date-chip {
+  background: #fff;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+}
+
+#recentDateButtons .date-chip.active {
+  background: #0f766e;
+  color: #fff;
+  border-color: #0f766e;
 }
 
 .table-wrap {

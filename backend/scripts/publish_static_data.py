@@ -132,6 +132,12 @@ def main(argv: list[str] | None = None) -> int:
         default="",
         help="Comma separated boards, e.g. best_sellers,new_releases,movers_and_shakers",
     )
+    parser.add_argument(
+        "--source",
+        default="manual",
+        choices=["manual", "auto"],
+        help="Write update source into manifest",
+    )
     args = parser.parse_args(argv or [])
 
     generated_at = _utc_now()
@@ -177,6 +183,7 @@ def main(argv: list[str] | None = None) -> int:
         previous=previous_manifest,
         available_dates=available_dates,
         retention_days=retention_days,
+        source=args.source,
     )
     _write_json(_manifest_path(), manifest)
     return 0

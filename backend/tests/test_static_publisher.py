@@ -48,6 +48,7 @@ class StaticPublisherTests(unittest.TestCase):
             "last_success_date": "2026-03-01",
             "last_success_at": "2026-03-01T12:00:00Z",
             "available_dates": ["2026-03-01"],
+            "source": "auto",
         }
 
         manifest = build_manifest(
@@ -57,11 +58,13 @@ class StaticPublisherTests(unittest.TestCase):
             previous=previous,
             available_dates=["2026-03-01"],
             retention_days=30,
+            source="manual",
         )
 
         self.assertEqual(manifest["status"], "stale")
         self.assertEqual(manifest["last_success_date"], "2026-03-01")
         self.assertEqual(manifest["message"], "crawl failed")
+        self.assertEqual(manifest["source"], "manual")
 
 
 if __name__ == "__main__":

@@ -13,9 +13,11 @@
     </header>
 
     <main>
-      <section class="card">
+      <section class="card status-card">
         <h2>数据状态</h2>
+        <div id="statusBanner" class="status-banner status-loading">数据加载中</div>
         <p class="muted">状态: <code id="dataStatus">loading</code></p>
+        <p class="muted">数据来源: <code id="dataSource">-</code></p>
         <p class="muted">最后成功日期: <code id="lastSuccessDate">-</code></p>
         <p class="muted">最后尝试时间: <code id="lastAttemptAt">-</code></p>
       </section>
@@ -24,6 +26,8 @@
         <h2>筛选</h2>
         <div class="row">
           <select id="snapshot_date"></select>
+          <button id="compareYesterday" type="button">一键对比昨日</button>
+          <button id="clearCompare" type="button">清除对比</button>
           <select id="site">
             <option value="amazon.com">amazon.com</option>
             <option value="amazon.co.jp">amazon.co.jp</option>
@@ -55,6 +59,7 @@
           <button id="searchRanks" type="button">筛选</button>
           <button id="downloadCsv" type="button">导出 CSV</button>
         </div>
+        <div class="row" id="recentDateButtons"></div>
         <div id="querySummary"></div>
       </section>
 
@@ -65,7 +70,7 @@
             <thead>
               <tr>
                 <th>日期</th><th>站点</th><th>榜单</th><th>类目</th>
-                <th>排名</th><th>ASIN</th><th>商品名</th><th>品牌</th>
+                <th>排名</th><th>较昨日</th><th>ASIN</th><th>商品名</th><th>品牌</th>
                 <th>价格</th><th>评分</th><th>评论数</th><th>详情</th>
               </tr>
             </thead>

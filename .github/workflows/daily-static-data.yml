@@ -26,7 +26,7 @@ jobs:
       - name: Generate static data
         run: |
           cd backend
-          python3 scripts/publish_static_data.py
+          python3 scripts/publish_static_data.py --source auto
 
       - name: Commit and push data updates
         run: |

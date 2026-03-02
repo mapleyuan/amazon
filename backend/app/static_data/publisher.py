@@ -90,6 +90,7 @@ def build_manifest(
     previous: dict[str, Any] | None,
     available_dates: list[str],
     retention_days: int,
+    source: str,
 ) -> dict[str, Any]:
     previous_manifest = previous or {}
     latest_date = available_dates[0] if available_dates else None
@@ -107,9 +108,9 @@ def build_manifest(
         "last_success_date": last_success_date,
         "last_success_at": last_success_at,
         "status": status,
+        "source": source,
         "message": message,
         "retention_days": int(retention_days),
         "available_dates": available_dates,
         "default_filters": DEFAULT_FILTERS,
     }
-

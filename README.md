@@ -30,7 +30,7 @@
 
 ```bash
 cd backend
-python3 scripts/publish_static_data.py
+python3 scripts/publish_static_data.py --source manual
 cd ..
 git add backend/app/web/data
 git commit -m "chore(data): manual refresh static data"
@@ -41,9 +41,9 @@ git push origin main
 
 ```bash
 cd backend
-AMAZON_CRAWL_CATEGORY_LIMIT=3 python3 scripts/publish_static_data.py --sites amazon.com --boards best_sellers
+AMAZON_CRAWL_CATEGORY_LIMIT=3 python3 scripts/publish_static_data.py --source manual --sites amazon.com --boards best_sellers
 ```
 
 > 如需快速验证页面，可临时用 mock 数据：
 >
-> `AMAZON_MOCK_CRAWL=1 python3 scripts/publish_static_data.py`
+> `AMAZON_MOCK_CRAWL=1 python3 scripts/publish_static_data.py --source manual`
