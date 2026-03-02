@@ -1,115 +1,112 @@
-const API_BASE_STORAGE_KEY = "amazon_api_base_url";
+const MANIFEST_PATH = "./data/manifest.json";
+const DAILY_PATH_PREFIX = "./data/daily/";
 
-function normalizeApiBase(url) {
-  return (url || "").trim().replace(/\/+$/, "");
+let manifest = null;
+let dailyPayload = null;
+let filteredItems = [];
+
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = value ?? "";
 }
 
-function defaultApiBase() {
-  return `${window.location.protocol}//${window.location.host}`;
-}
-
-let apiBase = defaultApiBase();
-
-function currentApiBase() {
-  return apiBase;
-}
-
-function applyApiBase(nextBase) {
-  const normalized = normalizeApiBase(nextBase);
-  if (normalized) {
-    apiBase = normalized;
-    window.localStorage.setItem(API_BASE_STORAGE_KEY, normalized);
-  } else {
-    apiBase = defaultApiBase();
-    window.localStorage.removeItem(API_BASE_STORAGE_KEY);
-  }
-
-  const input = document.getElementById("apiBase");
-  if (input) {
-    input.value = normalized;
-  }
-  document.getElementById("apiBaseCurrent").textContent = currentApiBase();
-}
-
-function initializeApiBase() {
-  const saved = window.localStorage.getItem(API_BASE_STORAGE_KEY) || "";
-  applyApiBase(saved);
-}
-
-function buildApiUrl(path) {
-  if (/^https?:\/\//i.test(path)) {
-    return path;
-  }
-  if (!path.startsWith("/")) {
-    throw new Error(`invalid api path: ${path}`);
-  }
-  return `${currentApiBase()}${path}`;
-}
-
-async function api(path, options) {
-  const resp = await fetch(buildApiUrl(path), options);
-  const contentType = resp.headers.get("content-type") || "";
-  const payload = contentType.includes("application/json") ? await resp.json() : await resp.text();
-
+async function loadJson(path) {
+  const resp = await fetch(path, { cache: "no-store" });
   if (!resp.ok) {
-    const message = typeof payload === "string" ? payload : payload.error || JSON.stringify(payload);
-    throw new Error(`请求失败 (${resp.status}): ${message}`);
+    throw new Error(`加载失败 (${resp.status}): ${path}`);
   }
-  return payload;
+  return resp.json();
+}
+
+function parseNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function getManifestDates() {
+  if (!manifest || !Array.isArray(manifest.available_dates)) return [];
+  return manifest.available_dates.filter((d) => typeof d === "string" && d.trim());
+}
+
+function renderStatus() {
+  const status = manifest?.status || "empty";
+  const message = manifest?.message || "";
+  const statusText = message ? `${status} (${message})` : status;
+  setText("dataStatus", statusText);
+  setText("lastSuccessDate", manifest?.last_success_date || "-");
+  setText("lastAttemptAt", manifest?.last_attempt_at || "-");
+}
+
+function applyDefaultFilters() {
+  const defaults = manifest?.default_filters || {};
+  if (defaults.site) document.getElementById("site").value = defaults.site;
+  if (defaults.board_type) document.getElementById("board_type").value = defaults.board_type;
+  if (defaults.has_price !== undefined) document.getElementById("has_price").value = String(defaults.has_price);
+  if (defaults.top_n !== undefined) document.getElementById("top_n").value = String(defaults.top_n);
+  if (defaults.sort_by) document.getElementById("sort_by").value = defaults.sort_by;
+  if (defaults.sort_order) document.getElementById("sort_order").value = defaults.sort_order;
+}
+
+function populateDateOptions() {
+  const select = document.getElementById("snapshot_date");
+  const dates = getManifestDates();
+  select.innerHTML = "";
+
+  if (!dates.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "暂无可用数据";
+    select.appendChild(option);
+    return;
+  }
+
+  dates.forEach((date) => {
+    const option = document.createElement("option");
+    option.value = date;
+    option.textContent = date;
+    select.appendChild(option);
+  });
+
+  const preferred = manifest?.last_success_date || dates[0];
+  if (dates.includes(preferred)) {
+    select.value = preferred;
+  } else {
+    select.value = dates[0];
+  }
 }
 
 function currentFilters() {
-  const site = document.getElementById("site").value;
-  const boardType = document.getElementById("board_type").value;
-  const categoryKey = document.getElementById("category_key").value;
-  const hasPrice = document.getElementById("has_price").value;
-  const topN = document.getElementById("top_n").value.trim();
-  const sortBy = document.getElementById("sort_by").value;
-  const sortOrder = document.getElementById("sort_order").value;
-  const keyword = document.getElementById("keyword").value.trim();
-  const params = new URLSearchParams({ site: site, board_type: boardType });
-  if (categoryKey) params.set("category_key", categoryKey);
-  if (hasPrice) params.set("has_price", hasPrice);
-  if (topN) params.set("top_n", topN);
-  if (sortBy) params.set("sort_by", sortBy);
-  if (sortOrder) params.set("sort_order", sortOrder);
-  if (keyword) params.set("keyword", keyword);
-  return params;
-}
-
-async function refreshJobs() {
-  const data = await api("/api/jobs");
-  document.getElementById("jobs").textContent = JSON.stringify(data.items || [], null, 2);
-}
-
-async function runJob() {
-  const payload = {
+  return {
     site: document.getElementById("site").value,
-    board_type: document.getElementById("board_type").value,
+    boardType: document.getElementById("board_type").value,
+    categoryKey: document.getElementById("category_key").value,
+    hasPrice: document.getElementById("has_price").value,
+    topN: document.getElementById("top_n").value.trim(),
+    sortBy: document.getElementById("sort_by").value,
+    sortOrder: document.getElementById("sort_order").value,
+    keyword: document.getElementById("keyword").value.trim().toLowerCase(),
   };
-
-  const data = await api("/api/jobs/run", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-
-  alert(`任务已创建: #${data.id}`);
-  await refreshJobs();
 }
 
-async function loadCategories() {
-  const site = document.getElementById("site").value;
-  const boardType = document.getElementById("board_type").value;
-  const data = await api(`/api/categories?site=${encodeURIComponent(site)}&board_type=${encodeURIComponent(boardType)}`);
+function rebuildCategoryOptions() {
   const select = document.getElementById("category_key");
   const previous = select.value;
+  const site = document.getElementById("site").value;
+  const boardType = document.getElementById("board_type").value;
 
   select.innerHTML = '<option value="">全部类目</option>';
-  (data.items || []).forEach((item) => {
+  if (!dailyPayload) return;
+
+  const categoryItems = (dailyPayload.categories || [])
+    .filter((item) => item.site === site && item.board_type === boardType)
+    .sort((a, b) => String(a.category_name || "").localeCompare(String(b.category_name || "")));
+
+  categoryItems.forEach((item) => {
     const option = document.createElement("option");
     option.value = item.category_key;
-    option.textContent = `${item.category_name} (${item.item_count})`;
+    option.textContent = `${item.category_name} (${item.item_count || 0})`;
     select.appendChild(option);
   });
 
@@ -118,19 +115,73 @@ async function loadCategories() {
   }
 }
 
-async function searchRanks() {
-  const params = currentFilters();
-  const data = await api(`/api/ranks?${params.toString()}`);
+function sortFilteredItems(items, sortBy, sortOrder) {
+  const direction = sortOrder === "desc" ? -1 : 1;
+  const withIndex = items.map((item, index) => ({ item, index }));
+
+  withIndex.sort((left, right) => {
+    const a = parseNumber(left.item[sortBy]);
+    const b = parseNumber(right.item[sortBy]);
+
+    if (a === null && b === null) {
+      // Keep stable order for all-null values.
+      return left.index - right.index;
+    }
+    if (a === null) return 1;
+    if (b === null) return -1;
+    if (a !== b) return (a - b) * direction;
+
+    const rankA = parseNumber(left.item.rank) ?? Number.MAX_SAFE_INTEGER;
+    const rankB = parseNumber(right.item.rank) ?? Number.MAX_SAFE_INTEGER;
+    if (rankA !== rankB) return rankA - rankB;
+    return left.index - right.index;
+  });
+
+  return withIndex.map((entry) => entry.item);
+}
+
+function filterItems() {
+  if (!dailyPayload || !Array.isArray(dailyPayload.items)) {
+    return [];
+  }
+
+  const filters = currentFilters();
+  const topN = Math.max(1, parseInt(filters.topN || "100", 10));
+  const requirePrice = !["0", "false", "no"].includes(String(filters.hasPrice).toLowerCase());
+
+  const scoped = dailyPayload.items.filter((item) => {
+    if (item.site !== filters.site) return false;
+    if (item.board_type !== filters.boardType) return false;
+    if (filters.categoryKey && item.category_key !== filters.categoryKey) return false;
+
+    const rank = parseNumber(item.rank);
+    if (rank !== null && rank > topN) return false;
+
+    if (requirePrice) {
+      const priceText = String(item.price_text || "").trim();
+      if (!priceText) return false;
+    }
+
+    if (filters.keyword) {
+      const title = String(item.title || "").toLowerCase();
+      const asin = String(item.asin || "").toLowerCase();
+      if (!title.includes(filters.keyword) && !asin.includes(filters.keyword)) return false;
+    }
+
+    return true;
+  });
+
+  return sortFilteredItems(scoped, filters.sortBy, filters.sortOrder);
+}
+
+function renderTable(items) {
   const tbody = document.querySelector("#ranksTable tbody");
   tbody.innerHTML = "";
-  document.getElementById("querySummary").textContent = `总数: ${data.total || 0} | 数据任务: ${data.job_id || "-"}`;
 
-  (data.items || []).forEach((item) => {
+  items.forEach((item) => {
     const tr = document.createElement("tr");
     const detailUrl = item.detail_url || "";
-    const detailCell = detailUrl
-      ? `<a href="${detailUrl}" target="_blank" rel="noreferrer">打开</a>`
-      : "";
+    const detailCell = detailUrl ? `<a href="${detailUrl}" target="_blank" rel="noreferrer">打开</a>` : "";
     tr.innerHTML = `
       <td>${item.snapshot_date || ""}</td>
       <td>${item.site || ""}</td>
@@ -147,78 +198,128 @@ async function searchRanks() {
     `;
     tbody.appendChild(tr);
   });
-
-  document.getElementById("csvExport").href = buildApiUrl(`/api/export/ranks.csv?${params.toString()}`);
-  document.getElementById("xlsxExport").href = buildApiUrl(`/api/export/ranks.xlsx?${params.toString()}`);
 }
 
-async function cleanupInvalid() {
-  const site = document.getElementById("site").value;
-  const boardType = document.getElementById("board_type").value;
-  const confirmed = window.confirm(`清理 ${site} / ${boardType} 下历史无价格数据？`);
-  if (!confirmed) return;
+function renderSummary() {
+  const date = document.getElementById("snapshot_date").value || "-";
+  setText("querySummary", `日期: ${date} | 结果数: ${filteredItems.length}`);
+}
 
-  const data = await api("/api/maintenance/cleanup-invalid", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      site: site,
-      board_type: boardType,
-    }),
+function escapeCsv(value) {
+  const text = String(value ?? "");
+  if (text.includes('"') || text.includes(",") || text.includes("\n")) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function buildCsv(items) {
+  const headers = [
+    "snapshot_date",
+    "site",
+    "board_type",
+    "category_name",
+    "rank",
+    "asin",
+    "title",
+    "brand",
+    "price_text",
+    "rating",
+    "review_count",
+    "detail_url",
+  ];
+  const lines = [headers.join(",")];
+  items.forEach((item) => {
+    lines.push(headers.map((key) => escapeCsv(item[key])).join(","));
   });
-
-  alert(
-    `清理完成\n删除排行: ${data.deleted_rank_records}\n删除商品: ${data.deleted_products}\n删除类目: ${data.deleted_categories}\n剩余无价格: ${data.remaining_invalid_rank_records}`,
-  );
-  await loadCategories();
-  await searchRanks();
+  return lines.join("\n");
 }
 
-function showError(error) {
+function downloadCsv() {
+  if (!filteredItems.length) {
+    window.alert("当前筛选结果为空，无法导出。");
+    return;
+  }
+
+  const date = document.getElementById("snapshot_date").value || "unknown";
+  const csv = buildCsv(filteredItems);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `ranks-${date}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function applyFilters() {
+  filteredItems = filterItems();
+  renderTable(filteredItems);
+  renderSummary();
+}
+
+async function loadDailyPayload(date) {
+  if (!date) {
+    dailyPayload = null;
+    filteredItems = [];
+    renderTable([]);
+    renderSummary();
+    return;
+  }
+
+  const path = `${DAILY_PATH_PREFIX}${encodeURIComponent(date)}.json`;
+  dailyPayload = await loadJson(path);
+  rebuildCategoryOptions();
+  applyFilters();
+}
+
+async function initialize() {
+  try {
+    manifest = await loadJson(MANIFEST_PATH);
+  } catch (error) {
+    manifest = {
+      status: "empty",
+      message: error instanceof Error ? error.message : String(error),
+      available_dates: [],
+      default_filters: {},
+      last_success_date: null,
+      last_attempt_at: null,
+    };
+  }
+
+  renderStatus();
+  applyDefaultFilters();
+  populateDateOptions();
+
+  document.getElementById("snapshot_date").addEventListener("change", () => {
+    loadDailyPayload(document.getElementById("snapshot_date").value).catch((error) => {
+      window.alert(error instanceof Error ? error.message : String(error));
+    });
+  });
+  document.getElementById("site").addEventListener("change", () => {
+    rebuildCategoryOptions();
+    applyFilters();
+  });
+  document.getElementById("board_type").addEventListener("change", () => {
+    rebuildCategoryOptions();
+    applyFilters();
+  });
+  document.getElementById("category_key").addEventListener("change", applyFilters);
+  document.getElementById("has_price").addEventListener("change", applyFilters);
+  document.getElementById("top_n").addEventListener("change", applyFilters);
+  document.getElementById("sort_by").addEventListener("change", applyFilters);
+  document.getElementById("sort_order").addEventListener("change", applyFilters);
+  document.getElementById("searchRanks").addEventListener("click", applyFilters);
+  document.getElementById("downloadCsv").addEventListener("click", downloadCsv);
+
+  await loadDailyPayload(document.getElementById("snapshot_date").value);
+}
+
+initialize().catch((error) => {
+  setText("dataStatus", "error");
   const message = error instanceof Error ? error.message : String(error);
   window.alert(message);
-}
-
-async function refreshAllData() {
-  await refreshJobs();
-  await loadCategories();
-  await searchRanks();
-}
-
-initializeApiBase();
-
-document.getElementById("saveApiBase").addEventListener("click", async () => {
-  try {
-    applyApiBase(document.getElementById("apiBase").value);
-    await refreshAllData();
-  } catch (error) {
-    showError(error);
-  }
 });
 
-document.getElementById("resetApiBase").addEventListener("click", async () => {
-  try {
-    applyApiBase("");
-    await refreshAllData();
-  } catch (error) {
-    showError(error);
-  }
-});
-
-document.getElementById("runJob").addEventListener("click", () => runJob().catch(showError));
-document.getElementById("refreshJobs").addEventListener("click", () => refreshJobs().catch(showError));
-document.getElementById("searchRanks").addEventListener("click", () => searchRanks().catch(showError));
-document.getElementById("cleanupInvalid").addEventListener("click", () => cleanupInvalid().catch(showError));
-document.getElementById("site").addEventListener("change", () =>
-  loadCategories().then(searchRanks).catch(showError)
-);
-document.getElementById("board_type").addEventListener("change", () =>
-  loadCategories().then(searchRanks).catch(showError)
-);
-document.getElementById("category_key").addEventListener("change", () => searchRanks().catch(showError));
-document.getElementById("has_price").addEventListener("change", () => searchRanks().catch(showError));
-document.getElementById("top_n").addEventListener("change", () => searchRanks().catch(showError));
-document.getElementById("sort_by").addEventListener("change", () => searchRanks().catch(showError));
-document.getElementById("sort_order").addEventListener("change", () => searchRanks().catch(showError));
-
-refreshAllData().catch(showError);

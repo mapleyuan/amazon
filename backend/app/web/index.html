@@ -9,26 +9,21 @@
   <body>
     <header>
       <h1>Amazon 热门榜后台</h1>
-      <p>站点: US / JP / UK | 榜单: Best Sellers / New Releases / Movers & Shakers</p>
+      <p>GitHub Pages 静态日榜：每天自动更新，可离线筛选</p>
     </header>
 
     <main>
       <section class="card">
-        <h2>接口配置</h2>
-        <div class="row">
-          <input id="apiBase" placeholder="https://your-backend.example.com" />
-          <button id="saveApiBase" type="button">保存 API 地址</button>
-          <button id="resetApiBase" type="button">恢复默认</button>
-        </div>
-        <p class="muted">
-          当前 API 地址:
-          <code id="apiBaseCurrent"></code>
-        </p>
+        <h2>数据状态</h2>
+        <p class="muted">状态: <code id="dataStatus">loading</code></p>
+        <p class="muted">最后成功日期: <code id="lastSuccessDate">-</code></p>
+        <p class="muted">最后尝试时间: <code id="lastAttemptAt">-</code></p>
       </section>
 
       <section class="card">
-        <h2>任务</h2>
+        <h2>筛选</h2>
         <div class="row">
+          <select id="snapshot_date"></select>
           <select id="site">
             <option value="amazon.com">amazon.com</option>
             <option value="amazon.co.jp">amazon.co.jp</option>
@@ -39,15 +34,6 @@
             <option value="new_releases">new_releases</option>
             <option value="movers_and_shakers">movers_and_shakers</option>
           </select>
-          <button id="runJob">手动触发抓取</button>
-          <button id="refreshJobs">刷新任务列表</button>
-        </div>
-        <pre id="jobs"></pre>
-      </section>
-
-      <section class="card">
-        <h2>排行榜查询</h2>
-        <div class="row">
           <select id="category_key">
             <option value="">全部类目</option>
           </select>
@@ -65,13 +51,15 @@
             <option value="asc">升序</option>
             <option value="desc">降序</option>
           </select>
-          <input id="keyword" placeholder="关键词(商品名)" />
-          <button id="searchRanks">查询</button>
-          <button id="cleanupInvalid">清理无价格历史数据</button>
-          <a id="csvExport" href="#" target="_blank">导出 CSV</a>
-          <a id="xlsxExport" href="#" target="_blank">导出 Excel</a>
+          <input id="keyword" placeholder="关键词(商品名/ASIN)" />
+          <button id="searchRanks" type="button">筛选</button>
+          <button id="downloadCsv" type="button">导出 CSV</button>
         </div>
         <div id="querySummary"></div>
+      </section>
+
+      <section class="card">
+        <h2>排行榜</h2>
         <div class="table-wrap">
           <table id="ranksTable">
             <thead>

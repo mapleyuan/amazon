@@ -4,13 +4,18 @@ from argparse import ArgumentParser
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import sys
 from typing import Any
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.crawler.service import crawl_site_board
 from app.jobs.service import BOARDS, SITES
 from app.static_data.publisher import build_daily_payload, build_manifest, merge_available_dates
 
-WEB_DATA_DIR = Path(__file__).resolve().parents[1] / "app" / "web" / "data"
+WEB_DATA_DIR = PROJECT_ROOT / "app" / "web" / "data"
 DEFAULT_RETENTION_DAYS = 30
 
 

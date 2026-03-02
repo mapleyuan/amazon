@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-03-02T13:41:34Z",
+  "last_attempt_at": "2026-03-02T13:41:34Z",
+  "last_success_date": "2026-03-02",
+  "last_success_at": "2026-03-02T13:41:34Z",
+  "status": "success",
+  "message": "",
+  "retention_days": 30,
+  "available_dates": [
+    "2026-03-02"
+  ],
+  "default_filters": {
+    "site": "amazon.com",
+    "board_type": "best_sellers",
+    "has_price": "1",
+    "top_n": 100,
+    "sort_by": "rank",
+    "sort_order": "asc"
+  }
+}
