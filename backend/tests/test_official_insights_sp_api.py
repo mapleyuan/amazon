@@ -4,7 +4,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from app.official_insights.sp_api import SPAPIConfig, SP_API_ENDPOINTS
+from app.official_insights.sp_api import SPAPIClient, SPAPIConfig, SP_API_ENDPOINTS
 
 
 class OfficialInsightsSpApiTests(unittest.TestCase):
@@ -39,7 +39,36 @@ class OfficialInsightsSpApiTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             config.validate()
 
+    def test_customer_feedback_paths(self) -> None:
+        config = SPAPIConfig(
+            lwa_client_id="cid",
+            lwa_client_secret="secret",
+            lwa_refresh_token="refresh",
+            aws_access_key_id="ak",
+            aws_secret_access_key="sk",
+            aws_session_token="",
+            aws_region="us-east-1",
+            endpoint=SP_API_ENDPOINTS["na"],
+        )
+        client = SPAPIClient(config)
+        with patch.object(client, "request_json", return_value={"ok": True}) as mocked:
+            client.get_item_review_topics(
+                asin="B000000001",
+                marketplace_id="ATVPDKIKX0DER",
+                sort_by="MENTIONS",
+            )
+            client.get_item_review_trends(
+                asin="B000000001",
+                marketplace_id="ATVPDKIKX0DER",
+            )
+
+        self.assertEqual(mocked.call_count, 2)
+        topics_call = mocked.call_args_list[0].kwargs
+        self.assertEqual(topics_call["path"], "/customerFeedback/2024-06-01/items/B000000001/reviews/topics")
+        self.assertEqual(topics_call["query"]["marketplaceId"], "ATVPDKIKX0DER")
+        trends_call = mocked.call_args_list[1].kwargs
+        self.assertEqual(trends_call["path"], "/customerFeedback/2024-06-01/items/B000000001/reviews/trends")
+
 
 if __name__ == "__main__":
     unittest.main()
-

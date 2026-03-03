@@ -265,6 +265,34 @@ class SPAPIClient:
             path=f"/reports/2021-06-30/documents/{quote(report_document_id)}",
         )
 
+    def get_item_review_topics(
+        self,
+        *,
+        asin: str,
+        marketplace_id: str,
+        sort_by: str = "MENTIONS",
+    ) -> dict[str, Any]:
+        query: dict[str, str] = {"marketplaceId": marketplace_id}
+        if sort_by:
+            query["sortBy"] = sort_by
+        return self.request_json(
+            method="GET",
+            path=f"/customerFeedback/2024-06-01/items/{quote(asin)}/reviews/topics",
+            query=query,
+        )
+
+    def get_item_review_trends(
+        self,
+        *,
+        asin: str,
+        marketplace_id: str,
+    ) -> dict[str, Any]:
+        return self.request_json(
+            method="GET",
+            path=f"/customerFeedback/2024-06-01/items/{quote(asin)}/reviews/trends",
+            query={"marketplaceId": marketplace_id},
+        )
+
     def download_report_document(self, document: dict[str, Any], output_path: Path) -> None:
         url = str(document.get("url") or "").strip()
         if not url:
@@ -321,4 +349,3 @@ def fetch_report_to_file(
     client.download_report_document(document, output_path)
     result["report_document_id"] = document_id
     return result
-

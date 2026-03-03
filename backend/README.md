@@ -86,8 +86,33 @@ cd backend
 python3 scripts/refresh_official_insights.py \
   --snapshot-date 2026-03-03 \
   --marketplace-ids A1PA6795UKMFR9 \
-  --lookback-days 30 \
-  --strict
+  --lookback-days 30
+```
+
+Default behavior:
+
+- Keywords + conversion: `GET_BRAND_ANALYTICS_SEARCH_QUERY_PERFORMANCE_REPORT`
+  - `reportOptions.reportPeriod=MONTH`
+  - ASIN list auto-loaded from `app/web/data/daily/<date>.json` top products (or set via `--keywords-asins`)
+- Monthly sales: `GET_SALES_AND_TRAFFIC_REPORT`
+  - `reportOptions.dateGranularity=MONTH`
+  - `reportOptions.asinGranularity=CHILD`
+- Review pain points: Customer Feedback API (`/customerFeedback/2024-06-01/.../reviews/topics`)
+  - ASIN list auto-loaded from daily snapshot (or set via `--review-asins`)
+- Style trend: use style report if provided; otherwise derive from official keyword rows automatically.
+
+Useful flags:
+
+```bash
+# Manual ASIN override for SQP/review topics
+--keywords-asins B000000001,B000000002
+--review-asins B000000001,B000000002
+
+# Force skip one dimension
+--skip-keywords --skip-sales --skip-reviews --skip-style
+
+# Strict mode (fail if all official rows are empty)
+--strict
 ```
 
 Required env vars for SP-API pull:

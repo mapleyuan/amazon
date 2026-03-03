@@ -7,6 +7,7 @@ import unittest
 
 from app.official_insights.builder import (
     build_official_insights_payload,
+    derive_style_trends_from_keywords,
     parse_keywords_rows_from_csv,
     parse_keywords_rows_from_json,
     parse_monthly_sales_rows_from_csv,
@@ -74,6 +75,36 @@ class OfficialInsightsBuilderTests(unittest.TestCase):
             self.assertEqual(rows[0]["keyword"], "candle holder")
             self.assertEqual(rows[0]["month"], "2026-03")
 
+    def test_parse_keywords_rows_from_sqp_json(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "sqp.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "dataByAsin": [
+                            {
+                                "asin": "B000000001",
+                                "startDate": "2026-02-01",
+                                "searchQueryData": {"searchQuery": "gold candlestick holder"},
+                                "impressionData": {"asinImpressionCount": 1234},
+                                "clickData": {"asinClickCount": 234},
+                                "cartAddData": {"asinCartAddCount": 56},
+                                "purchaseData": {"asinPurchaseCount": 44},
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            rows = parse_keywords_rows_from_json(path)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["keyword"], "gold candlestick holder")
+            self.assertEqual(rows[0]["asin"], "B000000001")
+            self.assertEqual(rows[0]["impressions"], 1234)
+            self.assertEqual(rows[0]["clicks"], 234)
+            self.assertEqual(rows[0]["purchases"], 44)
+            self.assertEqual(rows[0]["month"], "2026-02")
+
     def test_parse_monthly_sales_rows_from_json(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "sales.json"
@@ -93,6 +124,29 @@ class OfficialInsightsBuilderTests(unittest.TestCase):
             )
             rows = parse_monthly_sales_rows_from_json(path)
             self.assertEqual(rows, [{"asin": "", "month": "2026-03", "units": 123, "revenue": 4567.89}])
+
+    def test_parse_monthly_sales_rows_from_sales_and_traffic_by_asin_json(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "sales_asin.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "salesAndTrafficByAsin": [
+                            {
+                                "childAsin": "B000000001",
+                                "startDate": "2026-03-01",
+                                "salesByAsin": {
+                                    "unitsOrdered": 321,
+                                    "orderedProductSales": {"amount": "8765.40"},
+                                },
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            rows = parse_monthly_sales_rows_from_json(path)
+            self.assertEqual(rows, [{"asin": "B000000001", "month": "2026-03", "units": 321, "revenue": 8765.4}])
 
     def test_parse_review_topics_from_json(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -116,6 +170,35 @@ class OfficialInsightsBuilderTests(unittest.TestCase):
             self.assertEqual(rows[0]["positive_topics"][0]["topic"], "quality")
             self.assertEqual(rows[0]["negative_topics"][0]["topic"], "fragile")
 
+    def test_parse_review_topics_from_customer_feedback_shape(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "review_topics_cf.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "items": [
+                            {
+                                "asin": "B000000001",
+                                "reviewTopics": [
+                                    {
+                                        "topicName": "quality",
+                                        "starRatingImpact": 0.7,
+                                        "topicMentions": {"positive": 28, "negative": 3},
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            rows = parse_review_topics_from_json(path)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["asin"], "B000000001")
+            self.assertEqual(rows[0]["positive_topics"][0]["topic"], "quality")
+            self.assertEqual(rows[0]["positive_topics"][0]["mentions"], 28)
+            self.assertEqual(rows[0]["negative_topics"][0]["mentions"], 3)
+
     def test_parse_style_trend_rows_from_csv(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "style.csv"
@@ -137,6 +220,16 @@ class OfficialInsightsBuilderTests(unittest.TestCase):
             )
             rows = parse_style_trend_rows_from_json(path)
             self.assertEqual(rows, [{"style": "minimal", "month": "2026-03", "score": 998.0}])
+
+    def test_derive_style_trends_from_keywords(self) -> None:
+        rows = derive_style_trends_from_keywords(
+            [
+                {"keyword": "gold candlestick holder", "month": "2026-03", "impressions": 1000},
+                {"keyword": "black candle holder", "month": "2026-03", "impressions": 600},
+            ]
+        )
+        self.assertTrue(rows)
+        self.assertEqual(rows[0]["month"], "2026-03")
 
     def test_build_official_insights_payload(self) -> None:
         payload = build_official_insights_payload(

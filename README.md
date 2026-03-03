@@ -34,10 +34,17 @@
 
 ```bash
 cd backend
-python3 scripts/refresh_official_insights.py --snapshot-date 2026-03-03 --strict
+python3 scripts/refresh_official_insights.py --snapshot-date 2026-03-03
 ```
 
 若没有官方报表文件，页面会自动回退到估算模式。
+
+默认会尝试获取：
+
+1. 竞品评论好评/差评痛点：Customer Feedback API（review topics）
+2. 关键词流量与转化：Search Query Performance 报表
+3. 各月销量：Sales and Traffic 报表（月粒度 + ASIN 粒度）
+4. 款式趋势：优先官方 style 报表，缺失时基于官方关键词自动聚合
 
 ## 本地手动兜底更新
 
