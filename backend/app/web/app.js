@@ -1,5 +1,6 @@
 const MANIFEST_PATH = "./data/manifest.json";
 const DAILY_PATH_PREFIX = "./data/daily/";
+const INSIGHTS_PATH_PREFIX = "./data/insights/";
 
 const STATUS_CLASSES = [
   "status-success",
@@ -37,6 +38,7 @@ let manifest = null;
 let dailyPayload = null;
 let filteredItems = [];
 const dailyCache = new Map();
+const officialInsightsCache = new Map();
 let trendRequestId = 0;
 let insightRequestId = 0;
 
@@ -61,6 +63,17 @@ function showError(error) {
 
 async function loadJson(path) {
   const resp = await fetch(path, { cache: "no-store" });
+  if (!resp.ok) {
+    throw new Error(`加载失败 (${resp.status}): ${path}`);
+  }
+  return resp.json();
+}
+
+async function loadOptionalJson(path) {
+  const resp = await fetch(path, { cache: "no-store" });
+  if (resp.status === 404) {
+    return null;
+  }
   if (!resp.ok) {
     throw new Error(`加载失败 (${resp.status}): ${path}`);
   }
@@ -96,6 +109,10 @@ function monthKeyFromDate(date) {
   const match = String(date || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
   if (!match) return "";
   return `${match[1]}-${match[2]}`;
+}
+
+function sortMonthAsc(left, right) {
+  return String(left || "").localeCompare(String(right || ""));
 }
 
 function formatCompactNumber(value) {
@@ -391,6 +408,134 @@ function buildStyleTrendLines(historyRows) {
   ];
 }
 
+function formatTopicLine(topics) {
+  if (!Array.isArray(topics) || !topics.length) return "暂无";
+  return topics
+    .slice(0, 5)
+    .map((topic) => {
+      const name = String(topic.topic || "").trim() || "未命名";
+      const mentions = parseNumber(topic.mentions);
+      if (mentions === null) return name;
+      return `${name}(${mentions})`;
+    })
+    .join("、");
+}
+
+function buildReviewInsightLinesFromOfficial(officialPayload, asin) {
+  const topics = Array.isArray(officialPayload?.review_topics) ? officialPayload.review_topics : [];
+  if (!topics.length) return [];
+
+  const selected =
+    topics.find((item) => String(item.asin || "").trim() === String(asin || "").trim()) || topics[0];
+  if (!selected) return [];
+
+  return [
+    `ASIN ${selected.asin || asin || "-"} 的官方评论主题洞察`,
+    `好评主题: ${formatTopicLine(selected.positive_topics)}`,
+    `差评痛点: ${formatTopicLine(selected.negative_topics)}`,
+  ];
+}
+
+function buildKeywordInsightRowsFromOfficial(officialPayload) {
+  const keywords = Array.isArray(officialPayload?.keywords) ? officialPayload.keywords : [];
+  if (!keywords.length) {
+    return { trafficRows: [], conversionRows: [] };
+  }
+
+  const trafficRows = [...keywords]
+    .sort((a, b) => (parseNumber(b.impressions) || 0) - (parseNumber(a.impressions) || 0))
+    .slice(0, 10)
+    .map((item) => ({
+      keyword: item.keyword || "-",
+      metric: formatCompactNumber(parseNumber(item.impressions) || 0),
+      itemCount: parseNumber(item.clicks) || 0,
+    }));
+
+  const conversionRows = [...keywords]
+    .map((item) => {
+      const explicitCvr = parseNumber(item.cvr);
+      if (explicitCvr !== null) {
+        return { ...item, cvrValue: explicitCvr };
+      }
+      const purchases = parseNumber(item.purchases) || 0;
+      const clicks = parseNumber(item.clicks) || 0;
+      return { ...item, cvrValue: clicks > 0 ? purchases / clicks : 0 };
+    })
+    .sort((a, b) => b.cvrValue - a.cvrValue)
+    .slice(0, 10)
+    .map((item) => ({
+      keyword: item.keyword || "-",
+      metric: `${(item.cvrValue * 100).toFixed(1)}%`,
+      itemCount: parseNumber(item.purchases) || 0,
+    }));
+
+  return { trafficRows, conversionRows };
+}
+
+function buildMonthlySalesRowsFromOfficial(officialPayload, asin) {
+  const rows = Array.isArray(officialPayload?.monthly_sales) ? officialPayload.monthly_sales : [];
+  if (!rows.length) return [];
+
+  return rows
+    .filter((row) => !asin || String(row.asin || "").trim() === String(asin || "").trim())
+    .map((row) => ({
+      month: row.month || "",
+      monthSales: parseNumber(row.units) || 0,
+      sampleDays: parseNumber(row.sample_days) || 0,
+      avgRank: parseNumber(row.avg_rank),
+    }))
+    .filter((row) => row.month)
+    .sort((left, right) => sortMonthAsc(left.month, right.month));
+}
+
+function buildStyleTrendLinesFromOfficial(officialPayload) {
+  const rows = Array.isArray(officialPayload?.style_trends) ? officialPayload.style_trends : [];
+  if (!rows.length) return [];
+
+  const grouped = new Map();
+  rows.forEach((row) => {
+    const month = String(row.month || "").trim();
+    const style = String(row.style || "").trim();
+    if (!month || !style) return;
+    const score = parseNumber(row.score) || 0;
+    const monthMap = grouped.get(month) || new Map();
+    monthMap.set(style, (monthMap.get(style) || 0) + score);
+    grouped.set(month, monthMap);
+  });
+
+  const months = [...grouped.keys()].sort(sortMonthAsc);
+  if (!months.length) return [];
+
+  const latestMonth = months[months.length - 1];
+  const latestMap = grouped.get(latestMonth) || new Map();
+  const latestTop = [...latestMap.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([style, score]) => `${style}(${Math.round(score)})`);
+
+  if (months.length < 2) {
+    return [
+      `官方款式趋势样本月份: ${latestMonth}（当前只有单月样本）`,
+      `当月热门款式: ${latestTop.length ? latestTop.join("、") : "暂无"}`,
+    ];
+  }
+
+  const prevMonth = months[months.length - 2];
+  const prevMap = grouped.get(prevMonth) || new Map();
+  const rising = [...latestMap.entries()]
+    .map(([style, score]) => ({ style, delta: score - (prevMap.get(style) || 0) }))
+    .filter((item) => item.delta > 0)
+    .sort((a, b) => b.delta - a.delta)
+    .slice(0, 6)
+    .map((item) => `${item.style}(+${Math.round(item.delta)})`);
+
+  return [
+    `官方款式趋势样本: ${months[0]} ~ ${latestMonth}（共 ${months.length} 个月）`,
+    `最新月热门款式: ${latestTop.length ? latestTop.join("、") : "暂无"}`,
+    `相对上月上升款式: ${rising.length ? rising.join("、") : "暂无明显上升"}`,
+  ];
+}
+
 function populateAnalysisAsinOptions() {
   const select = document.getElementById("analysisAsin");
   if (!select) return;
@@ -448,7 +593,7 @@ function buildMonthlySalesRows(historyRows, asin) {
   });
 
   return [...monthly.values()]
-    .sort((a, b) => String(a.month).localeCompare(String(b.month)))
+    .sort((a, b) => sortMonthAsc(a.month, b.month))
     .map((item) => ({
       month: item.month,
       monthSales: Math.round(item.monthSales),
@@ -490,6 +635,18 @@ async function collectScopeHistoryWithinOneYear(filters, anchorDate) {
   return historyRows;
 }
 
+async function getOfficialInsights(date) {
+  if (!date) return null;
+  if (officialInsightsCache.has(date)) {
+    return officialInsightsCache.get(date);
+  }
+
+  const path = `${INSIGHTS_PATH_PREFIX}${encodeURIComponent(date)}.json`;
+  const payload = await loadOptionalJson(path);
+  officialInsightsCache.set(date, payload);
+  return payload;
+}
+
 function resetInsightsView(message) {
   setText("insightStatus", message || "点击“分析当前竞品”生成结果");
   renderInsightList("reviewInsights", null);
@@ -513,9 +670,58 @@ async function runCompetitiveInsights() {
   const selectedAsin = document.getElementById("analysisAsin").value || (filteredItems[0]?.asin || "");
 
   resetInsightsView("分析中，请稍候...");
+  const officialPayload = await getOfficialInsights(anchorDate);
+  if (currentRequestId !== insightRequestId) return;
 
   const historyRows = await collectScopeHistoryWithinOneYear(filters, anchorDate);
   if (currentRequestId !== insightRequestId) return;
+
+  const officialKeywordRows = Array.isArray(officialPayload?.keywords) ? officialPayload.keywords.length : 0;
+  const officialReviewRows = Array.isArray(officialPayload?.review_topics) ? officialPayload.review_topics.length : 0;
+  const officialSalesRows = Array.isArray(officialPayload?.monthly_sales) ? officialPayload.monthly_sales.length : 0;
+  const officialStyleRows = Array.isArray(officialPayload?.style_trends) ? officialPayload.style_trends.length : 0;
+  const hasOfficialData = officialKeywordRows + officialReviewRows + officialSalesRows + officialStyleRows > 0;
+
+  if (hasOfficialData) {
+    const estimatedKeywordInsights = buildKeywordInsightRows(filteredItems);
+    const officialKeywordInsights = buildKeywordInsightRowsFromOfficial(officialPayload);
+    const officialReviewLines = buildReviewInsightLinesFromOfficial(officialPayload, selectedAsin);
+    const officialMonthlyRows = buildMonthlySalesRowsFromOfficial(officialPayload, selectedAsin);
+    const officialStyleLines = buildStyleTrendLinesFromOfficial(officialPayload);
+
+    renderInsightList(
+      "reviewInsights",
+      officialReviewLines.length ? officialReviewLines : buildReviewInsightLines(filteredItems),
+    );
+    renderKeywordMetrics(
+      "trafficKeywords",
+      officialKeywordInsights.trafficRows.length
+        ? officialKeywordInsights.trafficRows
+        : estimatedKeywordInsights.trafficRows,
+      officialKeywordInsights.trafficRows.length ? "官方曝光" : "估算流量",
+    );
+    renderKeywordMetrics(
+      "conversionKeywords",
+      officialKeywordInsights.conversionRows.length
+        ? officialKeywordInsights.conversionRows
+        : estimatedKeywordInsights.conversionRows,
+      officialKeywordInsights.conversionRows.length ? "官方转化率" : "转化分",
+    );
+    renderMonthlySalesInsights(
+      officialMonthlyRows.length ? officialMonthlyRows : buildMonthlySalesRows(historyRows, selectedAsin),
+      selectedAsin,
+    );
+    renderInsightList(
+      "styleTrendInsights",
+      officialStyleLines.length ? officialStyleLines : buildStyleTrendLines(historyRows),
+    );
+
+    setText(
+      "insightStatus",
+      `已完成分析：优先使用官方报表数据（关键词 ${officialKeywordRows}，月销量 ${officialSalesRows}，评论主题 ${officialReviewRows}，款式趋势 ${officialStyleRows}）。`,
+    );
+    return;
+  }
 
   renderInsightList("reviewInsights", buildReviewInsightLines(filteredItems));
   const keywordInsights = buildKeywordInsightRows(filteredItems);
@@ -526,7 +732,7 @@ async function runCompetitiveInsights() {
 
   setText(
     "insightStatus",
-    `已完成分析：当前样本 ${filteredItems.length} 条，历史采样日 ${historyRows.length} 天（近一年）。`,
+    `已完成分析：当前样本 ${filteredItems.length} 条，历史采样日 ${historyRows.length} 天（近一年，估算模式）。`,
   );
 }
 

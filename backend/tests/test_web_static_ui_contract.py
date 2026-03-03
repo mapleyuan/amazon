@@ -41,13 +41,17 @@ class WebStaticUiContractTests(unittest.TestCase):
         self.assertIn("function closeTrendModal", js)
         self.assertIn("function runCompetitiveInsights", js)
         self.assertIn("function collectScopeHistoryWithinOneYear", js)
+        self.assertIn("function getOfficialInsights", js)
         self.assertIn("function buildKeywordInsightRows", js)
+        self.assertIn("function buildKeywordInsightRowsFromOfficial", js)
         self.assertIn("function buildStyleTrendLines", js)
+        self.assertIn("function buildStyleTrendLinesFromOfficial", js)
         self.assertIn("function populateAnalysisAsinOptions", js)
         self.assertIn("recentDateButtons", js)
         self.assertIn("dataSource", js)
         self.assertIn("sales_month", js)
         self.assertIn("trendModal", js)
+        self.assertIn("INSIGHTS_PATH_PREFIX", js)
 
 
 if __name__ == "__main__":

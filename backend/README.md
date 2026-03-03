@@ -54,3 +54,25 @@ Each item now includes:
 Estimation strategy:
 - Prefer explicit "bought in past month" signals when present.
 - Fallback to a rank-based model when the source page omits that signal.
+
+## Build official insights data (real reports)
+
+You can import official reports (keywords / conversion / monthly sales / review topics / style trends)
+to generate:
+
+- `backend/app/web/data/insights/YYYY-MM-DD.json`
+
+Example:
+
+```bash
+cd backend
+python3 scripts/build_official_insights.py \
+  --snapshot-date 2026-03-03 \
+  --keywords-csv ./data/official/keywords.csv \
+  --monthly-sales-csv ./data/official/monthly_sales.csv \
+  --review-topics-json ./data/official/review_topics.json \
+  --style-trends-csv ./data/official/style_trends.csv \
+  --output-dir ./app/web/data/insights
+```
+
+Frontend insight panel will automatically prefer `data/insights/<date>.json` when the file exists.
