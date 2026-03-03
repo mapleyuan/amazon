@@ -8,9 +8,12 @@ import unittest
 from app.official_insights.builder import (
     build_official_insights_payload,
     parse_keywords_rows_from_csv,
+    parse_keywords_rows_from_json,
     parse_monthly_sales_rows_from_csv,
+    parse_monthly_sales_rows_from_json,
     parse_review_topics_from_json,
     parse_style_trend_rows_from_csv,
+    parse_style_trend_rows_from_json,
 )
 
 
@@ -47,6 +50,50 @@ class OfficialInsightsBuilderTests(unittest.TestCase):
             rows = parse_monthly_sales_rows_from_csv(path)
             self.assertEqual(rows, [{"asin": "B000000001", "month": "2026-03", "units": 320, "revenue": 8999.5}])
 
+    def test_parse_keywords_rows_from_json(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "keywords.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "items": [
+                            {
+                                "search_term": "candle holder",
+                                "impressions": 1200,
+                                "clicks": 130,
+                                "purchases": 26,
+                                "month": "2026-03-01",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            rows = parse_keywords_rows_from_json(path)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["keyword"], "candle holder")
+            self.assertEqual(rows[0]["month"], "2026-03")
+
+    def test_parse_monthly_sales_rows_from_json(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "sales.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "salesByDate": [
+                            {
+                                "date": "2026-03-21",
+                                "unitsOrdered": 123,
+                                "orderedProductSales": {"amount": "4567.89"},
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            rows = parse_monthly_sales_rows_from_json(path)
+            self.assertEqual(rows, [{"asin": "", "month": "2026-03", "units": 123, "revenue": 4567.89}])
+
     def test_parse_review_topics_from_json(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "review_topics.json"
@@ -81,6 +128,16 @@ class OfficialInsightsBuilderTests(unittest.TestCase):
             rows = parse_style_trend_rows_from_csv(path)
             self.assertEqual(rows[0], {"style": "gold", "month": "2026-03", "score": 3120.0})
 
+    def test_parse_style_trend_rows_from_json(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "style.json"
+            path.write_text(
+                json.dumps({"items": [{"style": "minimal", "month": "2026-03-01", "score": 998}]}),
+                encoding="utf-8",
+            )
+            rows = parse_style_trend_rows_from_json(path)
+            self.assertEqual(rows, [{"style": "minimal", "month": "2026-03", "score": 998.0}])
+
     def test_build_official_insights_payload(self) -> None:
         payload = build_official_insights_payload(
             snapshot_date="2026-03-03",
@@ -101,4 +158,3 @@ class OfficialInsightsBuilderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

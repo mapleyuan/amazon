@@ -21,8 +21,23 @@
 3. 生成文件：
    - `backend/app/web/data/manifest.json`
    - `backend/app/web/data/daily/YYYY-MM-DD.json`
-4. 自动保留最近 30 天数据。
+4. 当前配置为长期保留历史（`retention_days=0`）。
 5. 若当天抓取失败，保留最近一次成功数据并在 `manifest` 中标记 `status=stale`。
+
+## 官方洞察数据（真实报表优先）
+
+前端“竞品洞察”模块会优先读取：
+
+- `backend/app/web/data/insights/YYYY-MM-DD.json`
+
+该文件可由脚本生成：
+
+```bash
+cd backend
+python3 scripts/refresh_official_insights.py --snapshot-date 2026-03-03 --strict
+```
+
+若没有官方报表文件，页面会自动回退到估算模式。
 
 ## 本地手动兜底更新
 

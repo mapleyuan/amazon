@@ -76,3 +76,26 @@ python3 scripts/build_official_insights.py \
 ```
 
 Frontend insight panel will automatically prefer `data/insights/<date>.json` when the file exists.
+
+## Refresh official insights (auto pull + build)
+
+If SP-API credentials are configured, run:
+
+```bash
+cd backend
+python3 scripts/refresh_official_insights.py \
+  --snapshot-date 2026-03-03 \
+  --marketplace-ids A1PA6795UKMFR9 \
+  --lookback-days 30 \
+  --strict
+```
+
+Required env vars for SP-API pull:
+
+- `AMAZON_SPAPI_CLIENT_ID`
+- `AMAZON_SPAPI_CLIENT_SECRET`
+- `AMAZON_SPAPI_REFRESH_TOKEN`
+- `AMAZON_SPAPI_AWS_ACCESS_KEY_ID`
+- `AMAZON_SPAPI_AWS_SECRET_ACCESS_KEY`
+- `AMAZON_SPAPI_AWS_REGION` (default `us-east-1`)
+- `AMAZON_SPAPI_ENDPOINT` (or set `AMAZON_SPAPI_REGION` as `na/eu/fe`)

@@ -16,6 +16,15 @@ jobs:
       AMAZON_CRAWL_CATEGORY_LIMIT: "5"
       AMAZON_MOCK_CRAWL: "0"
       AMAZON_CRAWL_SOURCE: "jina_ai"
+      AMAZON_SPAPI_CLIENT_ID: ${{ secrets.AMAZON_SPAPI_CLIENT_ID }}
+      AMAZON_SPAPI_CLIENT_SECRET: ${{ secrets.AMAZON_SPAPI_CLIENT_SECRET }}
+      AMAZON_SPAPI_REFRESH_TOKEN: ${{ secrets.AMAZON_SPAPI_REFRESH_TOKEN }}
+      AMAZON_SPAPI_AWS_ACCESS_KEY_ID: ${{ secrets.AMAZON_SPAPI_AWS_ACCESS_KEY_ID }}
+      AMAZON_SPAPI_AWS_SECRET_ACCESS_KEY: ${{ secrets.AMAZON_SPAPI_AWS_SECRET_ACCESS_KEY }}
+      AMAZON_SPAPI_AWS_SESSION_TOKEN: ${{ secrets.AMAZON_SPAPI_AWS_SESSION_TOKEN }}
+      AMAZON_SPAPI_AWS_REGION: ${{ secrets.AMAZON_SPAPI_AWS_REGION }}
+      AMAZON_SPAPI_REGION: ${{ secrets.AMAZON_SPAPI_REGION }}
+      AMAZON_SPAPI_ENDPOINT: ${{ secrets.AMAZON_SPAPI_ENDPOINT }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,6 +38,19 @@ jobs:
         run: |
           cd backend
           python3 scripts/publish_static_data.py --source auto --retention-days 0 --sites amazon.com --boards best_sellers --category-urls http://www.amazon.com/Best-Sellers-Home-Kitchen-Candlestick-Holders/zgbs/home-garden/3734611/ref=zg_bs_nav_home-garden_4_3734591 --fail-on-mock --strict
+
+      - name: Build official insights (optional)
+        run: |
+          if [ -z "$AMAZON_SPAPI_CLIENT_ID" ] || [ -z "$AMAZON_SPAPI_CLIENT_SECRET" ] || [ -z "$AMAZON_SPAPI_REFRESH_TOKEN" ] || [ -z "$AMAZON_SPAPI_AWS_ACCESS_KEY_ID" ] || [ -z "$AMAZON_SPAPI_AWS_SECRET_ACCESS_KEY" ]; then
+            echo "SP-API credentials missing; skip official insights refresh."
+            exit 0
+          fi
+
+          cd backend
+          python3 scripts/refresh_official_insights.py \
+            --snapshot-date "$(date -u +%F)" \
+            --marketplace-ids A1PA6795UKMFR9 \
+            --lookback-days 30
 
       - name: Commit and push data updates
         run: |
