@@ -214,6 +214,9 @@ def crawl_site_board(
                     "price_text": item.get("price_text"),
                     "rating": item.get("rating"),
                     "review_count": item.get("review_count"),
+                    "sales_day": item.get("sales_day"),
+                    "sales_month": item.get("sales_month"),
+                    "sales_year": item.get("sales_year"),
                 }
             )
 

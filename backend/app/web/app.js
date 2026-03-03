@@ -310,6 +310,9 @@ function renderTable(items) {
       <td>${item.category_name || item.category_key || ""}</td>
       <td>${item.rank ?? ""}</td>
       <td>${change}</td>
+      <td>${item.sales_day ?? ""}</td>
+      <td>${item.sales_month ?? ""}</td>
+      <td>${item.sales_year ?? ""}</td>
       <td>${item.asin || ""}</td>
       <td>${item.title || ""}</td>
       <td>${item.brand || ""}</td>
@@ -350,6 +353,9 @@ function buildCsv(items) {
     "category_name",
     "rank",
     "day_change",
+    "sales_day",
+    "sales_month",
+    "sales_year",
     "asin",
     "title",
     "brand",
@@ -518,4 +524,3 @@ initialize().catch((error) => {
   updateStatusBanner("error", "");
   showError(error);
 });
-

@@ -48,6 +48,9 @@
           <input id="top_n" type="number" min="1" max="100" value="100" placeholder="Top N" />
           <select id="sort_by">
             <option value="rank">按排名</option>
+            <option value="sales_day">按当日销量</option>
+            <option value="sales_month">按近30天销量</option>
+            <option value="sales_year">按近1年销量</option>
             <option value="rating">按评分</option>
             <option value="review_count">按评论数</option>
           </select>
@@ -70,7 +73,7 @@
             <thead>
               <tr>
                 <th>日期</th><th>站点</th><th>榜单</th><th>类目</th>
-                <th>排名</th><th>较昨日</th><th>ASIN</th><th>商品名</th><th>品牌</th>
+                <th>排名</th><th>较昨日</th><th>当日销量(估)</th><th>近30天销量(估)</th><th>近1年销量(估)</th><th>ASIN</th><th>商品名</th><th>品牌</th>
                 <th>价格</th><th>评分</th><th>评论数</th><th>详情</th>
               </tr>
             </thead>

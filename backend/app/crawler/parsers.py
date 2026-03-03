@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import math
 import re
 
 _ASIN_RE = re.compile(r"/dp/([A-Z0-9]{10})")
@@ -9,6 +10,8 @@ _PRICE_RE = re.compile(r"(?:[$£¥]\s*\d+[\d,.]*)")
 _RATING_RE = re.compile(r"(\d(?:\.\d)?)\s*out of\s*5\s*stars", re.IGNORECASE)
 _REVIEW_RE = re.compile(r"(\d[\d,]*)\s*(?:ratings|reviews)", re.IGNORECASE)
 _REVIEW_RE_JP = re.compile(r"([\d,]+)\s*個の評価")
+_BOUGHT_MONTH_RE = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*([kKmM])?\+?\s*bought in past month", re.IGNORECASE)
+_BOUGHT_MONTH_RE_JP = re.compile(r"過去1か月で\s*([\d,]+)\s*点以上購入", re.IGNORECASE)
 _CARD_RE = re.compile(
     r'<li[^>]*>\s*<div[^>]*data-asin="([A-Z0-9]{10})"[^>]*>(.*?)</li>',
     re.IGNORECASE | re.DOTALL,
@@ -66,6 +69,44 @@ def _title_from_href(href: str, asin: str) -> str:
     slug = slug.replace("-", " ")
     title = re.sub(r"\s+", " ", slug).strip()
     return title
+
+
+def _parse_monthly_sales_signal(text: str) -> int | None:
+    match = _BOUGHT_MONTH_RE.search(text)
+    if match:
+        raw_num = match.group(1).replace(",", "")
+        suffix = (match.group(2) or "").lower()
+        try:
+            value = float(raw_num)
+        except ValueError:
+            return None
+
+        multiplier = 1
+        if suffix == "k":
+            multiplier = 1000
+        elif suffix == "m":
+            multiplier = 1_000_000
+        month = int(round(value * multiplier))
+        return month if month > 0 else None
+
+    jp_match = _BOUGHT_MONTH_RE_JP.search(text)
+    if jp_match:
+        parsed = _parse_number(jp_match.group(1))
+        return parsed if parsed and parsed > 0 else None
+
+    return None
+
+
+def _estimate_sales_fields(rank: int, monthly_signal: int | None) -> tuple[int, int, int]:
+    if monthly_signal is not None and monthly_signal > 0:
+        month = int(monthly_signal)
+    else:
+        # Fallback model based on bestseller rank when "bought in past month" is absent.
+        month = max(1, int(round(2500 / math.pow(max(1, rank), 0.7))))
+
+    day = max(1, int(round(month / 30)))
+    year = month * 12
+    return day, month, year
 
 
 def _parse_items_from_cards(html_text: str) -> list[dict]:
@@ -134,6 +175,8 @@ def _parse_items_from_cards(html_text: str) -> list[dict]:
             re.IGNORECASE | re.DOTALL,
         )
         image_url = image_match.group(1) if image_match else None
+        monthly_signal = _parse_monthly_sales_signal(block)
+        sales_day, sales_month, sales_year = _estimate_sales_fields(rank, monthly_signal)
 
         items.append(
             {
@@ -143,6 +186,9 @@ def _parse_items_from_cards(html_text: str) -> list[dict]:
                 "price_text": price_text,
                 "rating": rating,
                 "review_count": review_count,
+                "sales_day": sales_day,
+                "sales_month": sales_month,
+                "sales_year": sales_year,
                 "image_url": image_url,
                 "detail_url": href or f"/dp/{asin}",
             }
@@ -202,6 +248,8 @@ def _parse_items_from_markdown(html_text: str) -> list[dict]:
 
         price_match = _PRICE_RE.search(line)
         price_text = price_match.group(0) if price_match else None
+        monthly_signal = _parse_monthly_sales_signal(line)
+        sales_day, sales_month, sales_year = _estimate_sales_fields(rank, monthly_signal)
 
         items.append(
             {
@@ -211,6 +259,9 @@ def _parse_items_from_markdown(html_text: str) -> list[dict]:
                 "price_text": price_text,
                 "rating": rating,
                 "review_count": review_count,
+                "sales_day": sales_day,
+                "sales_month": sales_month,
+                "sales_year": sales_year,
                 "detail_url": detail_url,
             }
         )
@@ -254,6 +305,8 @@ def parse_ranking_page(html_text: str) -> list[dict]:
             if rank <= 0 or rank > 100:
                 rank = idx
             title = _extract_title(block, asin)
+            monthly_signal = _parse_monthly_sales_signal(block)
+            sales_day, sales_month, sales_year = _estimate_sales_fields(rank, monthly_signal)
 
             items.append(
                 {
@@ -263,6 +316,9 @@ def parse_ranking_page(html_text: str) -> list[dict]:
                     "price_text": price_match.group(0) if price_match else None,
                     "rating": float(rating_match.group(1)) if rating_match else None,
                     "review_count": int(review_match.group(1).replace(",", "")) if review_match else None,
+                    "sales_day": sales_day,
+                    "sales_month": sales_month,
+                    "sales_year": sales_year,
                     "detail_url": f"/dp/{asin}",
                 }
             )
@@ -273,6 +329,7 @@ def parse_ranking_page(html_text: str) -> list[dict]:
             rank = int(ranks[idx - 1]) if idx - 1 < len(ranks) else idx
             if rank <= 0 or rank > 100:
                 rank = idx
+            sales_day, sales_month, sales_year = _estimate_sales_fields(rank, None)
             items.append(
                 {
                     "rank": rank,
@@ -281,6 +338,9 @@ def parse_ranking_page(html_text: str) -> list[dict]:
                     "price_text": None,
                     "rating": None,
                     "review_count": None,
+                    "sales_day": sales_day,
+                    "sales_month": sales_month,
+                    "sales_year": sales_year,
                     "detail_url": f"/dp/{asin}",
                 }
             )

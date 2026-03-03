@@ -39,7 +39,18 @@ python3 scripts/publish_static_data.py \
   --sites amazon.com \
   --boards best_sellers \
   --category-keywords candlestick,candle,home-decor \
-  --category-urls https://www.amazon.com/gp/bestsellers/home-garden/3736561 \
+  --category-urls http://www.amazon.com/Best-Sellers-Home-Kitchen-Candlestick-Holders/zgbs/home-garden/3734611/ref=zg_bs_nav_home-garden_4_3734591 \
   --fail-on-mock \
   --strict
 ```
+
+## Sales fields in static daily data
+
+Each item now includes:
+- `sales_day`: estimated daily sales
+- `sales_month`: estimated 30-day sales
+- `sales_year`: estimated 1-year sales
+
+Estimation strategy:
+- Prefer explicit "bought in past month" signals when present.
+- Fallback to a rank-based model when the source page omits that signal.

@@ -24,6 +24,14 @@ def merge_available_dates(existing: list[str], new_date: str | None, retention_d
 
 
 def _normalize_item(snapshot_date: str, row: dict[str, Any]) -> dict[str, Any]:
+    def to_int_or_none(value: Any) -> int | None:
+        if value is None or value == "":
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
     return {
         "snapshot_date": row.get("snapshot_date") or snapshot_date,
         "site": row.get("site", ""),
@@ -37,6 +45,9 @@ def _normalize_item(snapshot_date: str, row: dict[str, Any]) -> dict[str, Any]:
         "price_text": row.get("price_text"),
         "rating": row.get("rating"),
         "review_count": row.get("review_count"),
+        "sales_day": to_int_or_none(row.get("sales_day")),
+        "sales_month": to_int_or_none(row.get("sales_month")),
+        "sales_year": to_int_or_none(row.get("sales_year")),
         "detail_url": row.get("detail_url"),
     }
 

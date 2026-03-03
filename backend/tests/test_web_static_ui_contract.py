@@ -15,6 +15,9 @@ class WebStaticUiContractTests(unittest.TestCase):
         self.assertIn('id="recentDateButtons"', html)
         self.assertIn('id="compareYesterday"', html)
         self.assertIn("较昨日", html)
+        self.assertIn("当日销量(估)", html)
+        self.assertIn("近30天销量(估)", html)
+        self.assertIn("近1年销量(估)", html)
 
     def test_app_contains_compare_logic_entrypoint(self) -> None:
         js = (WEB_DIR / "app.js").read_text(encoding="utf-8")
@@ -22,6 +25,7 @@ class WebStaticUiContractTests(unittest.TestCase):
         self.assertIn("function compareWithPreviousDay", js)
         self.assertIn("recentDateButtons", js)
         self.assertIn("dataSource", js)
+        self.assertIn("sales_month", js)
 
 
 if __name__ == "__main__":

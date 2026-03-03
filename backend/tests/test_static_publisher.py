@@ -31,6 +31,9 @@ class StaticPublisherTests(unittest.TestCase):
                 "price_text": "$9.99",
                 "rating": 4.5,
                 "review_count": 10,
+                "sales_day": 12,
+                "sales_month": 360,
+                "sales_year": 4320,
                 "detail_url": "https://www.amazon.com/dp/B000000001",
             }
         ]
@@ -40,6 +43,9 @@ class StaticPublisherTests(unittest.TestCase):
         self.assertEqual(payload["stats"]["total_items"], 1)
         self.assertEqual(payload["stats"]["sites"], 1)
         self.assertEqual(payload["categories"][0]["category_name"], "Electronics")
+        self.assertEqual(payload["items"][0]["sales_day"], 12)
+        self.assertEqual(payload["items"][0]["sales_month"], 360)
+        self.assertEqual(payload["items"][0]["sales_year"], 4320)
 
     def test_build_manifest_stale_preserves_last_success(self) -> None:
         from app.static_data.publisher import build_manifest
