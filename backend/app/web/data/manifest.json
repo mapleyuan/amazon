@@ -1,15 +1,14 @@
 {
-  "generated_at": "2026-03-02T14:29:54Z",
-  "last_attempt_at": "2026-03-02T14:29:54Z",
-  "last_success_date": "2026-03-02",
-  "last_success_at": "2026-03-02T14:29:54Z",
+  "generated_at": "2026-03-03T03:42:20Z",
+  "last_attempt_at": "2026-03-03T03:42:20Z",
+  "last_success_date": "2026-03-03",
+  "last_success_at": "2026-03-03T03:42:20Z",
   "status": "success",
   "source": "manual",
   "message": "",
   "retention_days": 30,
   "available_dates": [
-    "2026-03-02",
-    "2026-03-01"
+    "2026-03-03"
   ],
   "default_filters": {
     "site": "amazon.com",

@@ -13,6 +13,10 @@ _CARD_RE = re.compile(
     r'<li[^>]*>\s*<div[^>]*data-asin="([A-Z0-9]{10})"[^>]*>(.*?)</li>',
     re.IGNORECASE | re.DOTALL,
 )
+_MD_RANK_RE = re.compile(r"^\s*\d+\.\s*#\s*(\d{1,3})", re.IGNORECASE)
+_MD_TITLE_RE = re.compile(r"\)\[([^\]]+)\]\([^)]*/dp/[A-Z0-9]{10}[^)]*\)", re.IGNORECASE)
+_MD_RATING_RE = re.compile(r"_?(\d(?:\.\d)?)\s*out of 5 stars_?\s*([\d,]+)", re.IGNORECASE)
+_MD_DETAIL_RE = re.compile(r"\((https?://[^)]+/dp/[A-Z0-9]{10}[^)]*)\)", re.IGNORECASE)
 
 
 def _extract_blocks(html_text: str) -> list[str]:
@@ -147,8 +151,83 @@ def _parse_items_from_cards(html_text: str) -> list[dict]:
     return items
 
 
+def _parse_items_from_markdown(html_text: str) -> list[dict]:
+    items: list[dict] = []
+    seen: set[tuple[int, str]] = set()
+
+    for line in html_text.splitlines():
+        if "/dp/" not in line or "#" not in line:
+            continue
+
+        rank_match = _MD_RANK_RE.match(line)
+        asin_match = _ASIN_RE.search(line)
+        if not rank_match or not asin_match:
+            continue
+
+        rank = int(rank_match.group(1))
+        if rank <= 0 or rank > 100:
+            continue
+
+        asin = asin_match.group(1)
+        key = (rank, asin)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        title = ""
+        title_match = _MD_TITLE_RE.search(line)
+        if title_match:
+            title = _clean_text(title_match.group(1))
+            if title.lower().startswith("!image"):
+                title = ""
+
+        rating = None
+        review_count = None
+        rating_match = _MD_RATING_RE.search(line)
+        if rating_match:
+            rating = float(rating_match.group(1))
+            review_count = _parse_number(rating_match.group(2))
+        else:
+            fallback_rating = _RATING_RE.search(line)
+            if fallback_rating:
+                rating = float(fallback_rating.group(1))
+            fallback_reviews = _REVIEW_RE.search(line) or _REVIEW_RE_JP.search(line)
+            if fallback_reviews:
+                review_count = _parse_number(fallback_reviews.group(1))
+
+        detail_url = f"/dp/{asin}"
+        detail_match = _MD_DETAIL_RE.search(line)
+        if detail_match:
+            detail_url = html.unescape(detail_match.group(1))
+
+        price_match = _PRICE_RE.search(line)
+        price_text = price_match.group(0) if price_match else None
+
+        items.append(
+            {
+                "rank": rank,
+                "asin": asin,
+                "title": title,
+                "price_text": price_text,
+                "rating": rating,
+                "review_count": review_count,
+                "detail_url": detail_url,
+            }
+        )
+
+    return items
+
+
 def parse_ranking_page(html_text: str) -> list[dict]:
     items = _parse_items_from_cards(html_text)
+    if items:
+        unique: dict[tuple[int, str], dict] = {}
+        for item in items:
+            key = (int(item["rank"]), str(item["asin"]))
+            unique[key] = item
+        return [unique[key] for key in sorted(unique)]
+
+    items = _parse_items_from_markdown(html_text)
     if items:
         unique: dict[tuple[int, str], dict] = {}
         for item in items:
@@ -235,12 +314,34 @@ def parse_category_links(html_text: str) -> list[tuple[str, str]]:
         clean_label = _clean_text(label) or clean_href.rsplit("/", 1)[-1]
         results.append((clean_href, clean_label))
 
+    md_links = re.findall(
+        (
+            r"\[([^\]]+)\]\((https?://[^)]+/(?:gp/bestsellers|gp/new-releases|gp/movers-and-shakers|"
+            r"zgbs|new-releases|movers-and-shakers)[^)]+)\)"
+        ),
+        html_text,
+        re.IGNORECASE,
+    )
+    for label, href in md_links:
+        clean_href = html.unescape(href)
+        if clean_href in seen:
+            continue
+        seen.add(clean_href)
+
+        clean_label = _clean_text(label) or clean_href.rsplit("/", 1)[-1]
+        results.append((clean_href, clean_label))
+
     return results
 
 
 def contains_block_page(html_text: str) -> bool:
     lowered = html_text.lower()
-    return "enter the characters you see below" in lowered or "robot check" in lowered or "captcha" in lowered
+    return (
+        "enter the characters you see below" in lowered
+        or "robot check" in lowered
+        or "captcha" in lowered
+        or "max challenge attempts exceeded" in lowered
+    )
 
 
 def parse_product_detail(html_text: str, asin: str) -> dict:

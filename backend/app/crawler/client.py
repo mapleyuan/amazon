@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import random
 import time
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from app.crawler.adapters import ACCEPT_LANG
+from app.core.settings import get_settings
 
 DEFAULT_UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -13,12 +15,38 @@ DEFAULT_UA = (
 )
 
 
+def _resolve_fetch_url(raw_url: str, *, source: str, proxy_template: str) -> str:
+    normalized_source = (source or "direct").strip().lower()
+    if normalized_source == "direct":
+        return raw_url
+
+    if normalized_source == "jina_ai":
+        upstream = raw_url
+        if upstream.startswith("https://"):
+            upstream = "http://" + upstream.removeprefix("https://")
+        return f"https://r.jina.ai/{upstream}"
+
+    if normalized_source == "proxy_template":
+        template = (proxy_template or "").strip()
+        if not template or "{url}" not in template:
+            raise RuntimeError("AMAZON_CRAWL_PROXY_TEMPLATE must include {url} when source=proxy_template")
+        return template.replace("{url}", quote(raw_url, safe=""))
+
+    raise RuntimeError(f"unsupported crawl source: {source}")
+
+
 def fetch_html(url: str, *, site: str, timeout: int = 15, max_bytes: int = 600_000) -> str:
     # Add tiny jitter to reduce regular request fingerprints.
     time.sleep(random.uniform(0.2, 0.6))
+    settings = get_settings()
+    fetch_url = _resolve_fetch_url(
+        url,
+        source=settings.crawl_source,
+        proxy_template=settings.crawl_proxy_template,
+    )
 
     request = Request(
-        url,
+        fetch_url,
         headers={
             "User-Agent": DEFAULT_UA,
             "Accept-Language": ACCEPT_LANG.get(site, "en-US,en;q=0.9"),

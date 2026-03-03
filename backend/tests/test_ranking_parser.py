@@ -42,6 +42,35 @@ class RankingParserTests(unittest.TestCase):
         self.assertEqual(items[0]["rating"], 4.4)
         self.assertEqual(items[0]["review_count"], 272288)
 
+    def test_parse_markdown_line_from_proxy_source(self) -> None:
+        from app.crawler.parsers import parse_ranking_page
+
+        markdown = """
+1.   #1   [![Image 3](https://images-na.ssl-images-amazon.com/images/I/71Mcspt-6AL._AC_UL450_SR450,320_.jpg)](http://www.amazon.com/Medicube-Zero-Pore-Pads-Dual-Textured/dp/B09V7Z4TJG/ref=abc)[medicube Toner Pads Zero Pore Pad 2.0](http://www.amazon.com/Medicube-Zero-Pore-Pads-Dual-Textured/dp/B09V7Z4TJG/ref=abc)[_4.6 out of 5 stars_ 18,709](http://www.amazon.com/product-reviews/B09V7Z4TJG/ref=abc)  [$18.90](http://www.amazon.com/Medicube-Zero-Pore-Pads-Dual-Textured/dp/B09V7Z4TJG/ref=abc)
+        """
+
+        items = parse_ranking_page(markdown)
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["asin"], "B09V7Z4TJG")
+        self.assertEqual(items[0]["rank"], 1)
+        self.assertEqual(items[0]["title"], "medicube Toner Pads Zero Pore Pad 2.0")
+        self.assertEqual(items[0]["price_text"], "$18.90")
+        self.assertEqual(items[0]["rating"], 4.6)
+        self.assertEqual(items[0]["review_count"], 18709)
+
+    def test_parse_category_links_supports_markdown_links(self) -> None:
+        from app.crawler.parsers import parse_category_links
+
+        markdown = """
+[Best Sellers in Electronics](http://www.amazon.com/zgbs/electronics/ref=zg_bs_nav_electronics)
+        """
+
+        links = parse_category_links(markdown)
+        self.assertEqual(len(links), 1)
+        self.assertEqual(links[0][0], "http://www.amazon.com/zgbs/electronics/ref=zg_bs_nav_electronics")
+        self.assertEqual(links[0][1], "Best Sellers in Electronics")
+
 
 if __name__ == "__main__":
     unittest.main()

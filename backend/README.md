@@ -26,3 +26,6 @@ python3 -m unittest discover -s tests -v
 - `AMAZON_MOCK_CRAWL`: `1` enables deterministic mock crawl (used in tests)
 - `AMAZON_MANUAL_LIMIT_PER_SITE`: daily manual trigger limit per site (default `3`)
 - `AMAZON_DETAIL_ENRICH_LIMIT`: max ASIN count per crawl run for detail-page enrichment (default `0`, disabled)
+- `AMAZON_CRAWL_CATEGORY_LIMIT`: category crawl limit per site+board (default `20`)
+- `AMAZON_CRAWL_SOURCE`: crawl source strategy (`direct`, `jina_ai`, or `proxy_template`, default `direct`)
+- `AMAZON_CRAWL_PROXY_TEMPLATE`: used when `AMAZON_CRAWL_SOURCE=proxy_template`; must contain `{url}`

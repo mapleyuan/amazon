@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+import sys
 
 
 class PublishStaticDataScriptTests(unittest.TestCase):
@@ -134,6 +135,71 @@ class PublishStaticDataScriptTests(unittest.TestCase):
                 self.assertEqual(code, 0)
                 manifest_text = (base / "data" / "manifest.json").read_text(encoding="utf-8")
                 self.assertIn('"source": "auto"', manifest_text)
+
+    def test_main_fail_on_mock_rows_returns_non_zero_when_strict(self) -> None:
+        from scripts import publish_static_data
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            with patch.object(publish_static_data, "WEB_DATA_DIR", base / "data"):
+                with patch.object(
+                    publish_static_data,
+                    "crawl_all_rows_for_targets",
+                    return_value=(
+                        "2026-03-02",
+                        [
+                            {
+                                "site": "amazon.com",
+                                "board_type": "best_sellers",
+                                "category_key": "mock-best_sellers-cat-1",
+                                "category_name": "Mock Category 1",
+                                "rank": 1,
+                                "asin": "B000000001",
+                                "title": "Mock Product 1",
+                                "brand": "MockBrand",
+                                "price_text": "$9.99",
+                                "rating": 4.5,
+                                "review_count": 100,
+                                "detail_url": "https://www.amazon.com/dp/B000000001",
+                            }
+                        ],
+                    ),
+                ):
+                    code = publish_static_data.main(["--fail-on-mock", "--strict"])
+
+                self.assertEqual(code, 1)
+                manifest_text = (base / "data" / "manifest.json").read_text(encoding="utf-8")
+                self.assertIn('"status": "stale"', manifest_text)
+                self.assertIn("mock rows detected", manifest_text)
+
+    def test_main_parses_cli_args_when_argv_is_none(self) -> None:
+        from scripts import publish_static_data
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            with patch.object(publish_static_data, "WEB_DATA_DIR", base / "data"):
+                with patch.object(
+                    publish_static_data,
+                    "crawl_all_rows_for_targets",
+                    return_value=("2026-03-02", []),
+                ) as mocked_crawl:
+                    with patch.object(
+                        sys,
+                        "argv",
+                        [
+                            "publish_static_data.py",
+                            "--sites",
+                            "amazon.com",
+                            "--boards",
+                            "best_sellers",
+                        ],
+                    ):
+                        publish_static_data.main(None)
+
+                mocked_crawl.assert_called_once_with(
+                    sites=["amazon.com"],
+                    boards=["best_sellers"],
+                )
 
 
 if __name__ == "__main__":

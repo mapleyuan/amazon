@@ -19,6 +19,8 @@ class CrawlerServiceLimitTests(unittest.TestCase):
             manual_limit_per_site=3,
             detail_enrich_limit=0,
             crawl_category_limit=2,
+            crawl_source="direct",
+            crawl_proxy_template="",
         )
 
         parsed_items = [

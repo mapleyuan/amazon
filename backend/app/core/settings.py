@@ -15,6 +15,8 @@ class Settings:
     manual_limit_per_site: int
     detail_enrich_limit: int
     crawl_category_limit: int
+    crawl_source: str
+    crawl_proxy_template: str
 
 
 def get_settings() -> Settings:
@@ -28,4 +30,6 @@ def get_settings() -> Settings:
         manual_limit_per_site=int(os.environ.get("AMAZON_MANUAL_LIMIT_PER_SITE", "3")),
         detail_enrich_limit=int(os.environ.get("AMAZON_DETAIL_ENRICH_LIMIT", "0")),
         crawl_category_limit=int(os.environ.get("AMAZON_CRAWL_CATEGORY_LIMIT", "20")),
+        crawl_source=os.environ.get("AMAZON_CRAWL_SOURCE", "direct"),
+        crawl_proxy_template=os.environ.get("AMAZON_CRAWL_PROXY_TEMPLATE", ""),
     )

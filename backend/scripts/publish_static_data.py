@@ -123,6 +123,20 @@ def _parse_csv_values(raw: str, choices: list[str], flag_name: str) -> list[str]
     return deduped
 
 
+def _contains_mock_rows(rows: list[dict[str, Any]]) -> bool:
+    for row in rows:
+        category_key = str(row.get("category_key") or "").strip().lower()
+        title = str(row.get("title") or "").strip().lower()
+        brand = str(row.get("brand") or "").strip().lower()
+        if category_key.startswith("mock-"):
+            return True
+        if title.startswith("mock "):
+            return True
+        if brand == "mockbrand":
+            return True
+    return False
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = ArgumentParser(description="Publish static daily data for GitHub Pages")
     parser.add_argument("--retention-days", type=int, default=DEFAULT_RETENTION_DAYS)
@@ -138,7 +152,17 @@ def main(argv: list[str] | None = None) -> int:
         choices=["manual", "auto"],
         help="Write update source into manifest",
     )
-    args = parser.parse_args(argv or [])
+    parser.add_argument(
+        "--fail-on-mock",
+        action="store_true",
+        help="Treat mock rows as failure so CI does not publish synthetic data",
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit non-zero when status is not success",
+    )
+    args = parser.parse_args(argv)
 
     generated_at = _utc_now()
     previous_manifest = _read_json(_manifest_path())
@@ -155,6 +179,8 @@ def main(argv: list[str] | None = None) -> int:
         snapshot_date, rows = crawl_all_rows_for_targets(sites=sites, boards=boards)
         if not rows:
             raise RuntimeError("crawl returned no rows")
+        if args.fail_on_mock and _contains_mock_rows(rows):
+            raise RuntimeError("mock rows detected; refusing to publish")
 
         daily_payload = build_daily_payload(snapshot_date=snapshot_date, generated_at=generated_at, rows=rows)
         daily_path = _daily_dir() / f"{snapshot_date}.json"
@@ -186,6 +212,8 @@ def main(argv: list[str] | None = None) -> int:
         source=args.source,
     )
     _write_json(_manifest_path(), manifest)
+    if args.strict and status != "success":
+        return 1
     return 0
 
 

@@ -14,6 +14,8 @@ jobs:
     timeout-minutes: 25
     env:
       AMAZON_CRAWL_CATEGORY_LIMIT: "5"
+      AMAZON_MOCK_CRAWL: "0"
+      AMAZON_CRAWL_SOURCE: "jina_ai"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,7 +28,7 @@ jobs:
       - name: Generate static data
         run: |
           cd backend
-          python3 scripts/publish_static_data.py --source auto
+          python3 scripts/publish_static_data.py --source auto --sites amazon.com --boards best_sellers --fail-on-mock --strict
 
       - name: Commit and push data updates
         run: |
