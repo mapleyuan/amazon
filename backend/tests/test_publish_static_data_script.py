@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -235,6 +236,83 @@ class PublishStaticDataScriptTests(unittest.TestCase):
                     category_keywords=["candlestick", "candle"],
                     category_urls=["https://www.amazon.com/gp/bestsellers/home-garden/3736561"],
                 )
+
+    def test_main_preserves_history_across_multiple_runs(self) -> None:
+        from scripts import publish_static_data
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            data_dir = base / "data"
+            daily_dir = data_dir / "daily"
+            daily_dir.mkdir(parents=True, exist_ok=True)
+
+            (daily_dir / "2026-03-01.json").write_text(
+                json.dumps({"snapshot_date": "2026-03-01", "items": []}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            (daily_dir / "2026-03-02.json").write_text(
+                json.dumps({"snapshot_date": "2026-03-02", "items": []}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            (data_dir / "manifest.json").write_text(
+                json.dumps(
+                    {
+                        "available_dates": ["2026-03-02", "2026-03-01"],
+                        "last_success_date": "2026-03-02",
+                        "last_success_at": "2026-03-02T00:00:00Z",
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            row = {
+                "site": "amazon.com",
+                "board_type": "best_sellers",
+                "category_key": "cat-1",
+                "category_name": "Electronics",
+                "rank": 1,
+                "asin": "B000000001",
+                "title": "Product 1",
+                "brand": "Brand",
+                "price_text": "$9.99",
+                "rating": 4.5,
+                "review_count": 100,
+                "detail_url": "https://www.amazon.com/dp/B000000001",
+            }
+
+            with patch.object(publish_static_data, "WEB_DATA_DIR", data_dir):
+                with patch.object(
+                    publish_static_data,
+                    "crawl_all_rows_for_targets",
+                    return_value=("2026-03-03", [row]),
+                ):
+                    code = publish_static_data.main(["--source", "auto"])
+
+                self.assertEqual(code, 0)
+                manifest_after_run_1 = json.loads((data_dir / "manifest.json").read_text(encoding="utf-8"))
+                self.assertEqual(
+                    manifest_after_run_1["available_dates"],
+                    ["2026-03-03", "2026-03-02", "2026-03-01"],
+                )
+                self.assertTrue((daily_dir / "2026-03-01.json").exists())
+                self.assertTrue((daily_dir / "2026-03-02.json").exists())
+                self.assertTrue((daily_dir / "2026-03-03.json").exists())
+
+                with patch.object(
+                    publish_static_data,
+                    "crawl_all_rows_for_targets",
+                    return_value=("2026-03-04", [row]),
+                ):
+                    code = publish_static_data.main(["--source", "auto"])
+
+                self.assertEqual(code, 0)
+                manifest_after_run_2 = json.loads((data_dir / "manifest.json").read_text(encoding="utf-8"))
+                self.assertEqual(
+                    manifest_after_run_2["available_dates"],
+                    ["2026-03-04", "2026-03-03", "2026-03-02", "2026-03-01"],
+                )
+                self.assertTrue((daily_dir / "2026-03-04.json").exists())
 
 
 if __name__ == "__main__":
