@@ -61,6 +61,13 @@
           <input id="keyword" placeholder="关键词(商品名/ASIN)" />
           <button id="searchRanks" type="button">筛选</button>
           <button id="downloadCsv" type="button">导出 CSV</button>
+          <button id="runInsights" type="button">分析当前竞品</button>
+        </div>
+        <div class="row">
+          <label for="analysisAsin">月销量分析 ASIN:</label>
+          <select id="analysisAsin">
+            <option value="">自动选择当前Top1</option>
+          </select>
         </div>
         <div class="row" id="recentDateButtons"></div>
         <div id="querySummary"></div>
@@ -79,6 +86,38 @@
             </thead>
             <tbody></tbody>
           </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>竞品洞察（估算）</h2>
+        <p id="insightStatus" class="muted">点击“分析当前竞品”生成结果</p>
+        <div class="insight-grid">
+          <article class="insight-panel">
+            <h3>1. 评论口碑与痛点（代理）</h3>
+            <div id="reviewInsights" class="insight-content"></div>
+          </article>
+          <article class="insight-panel">
+            <h3>2. 流量关键词与转化关键词（估）</h3>
+            <div class="keyword-columns">
+              <div>
+                <h4>主要流量关键词</h4>
+                <div id="trafficKeywords" class="insight-content"></div>
+              </div>
+              <div>
+                <h4>转化较好关键词</h4>
+                <div id="conversionKeywords" class="insight-content"></div>
+              </div>
+            </div>
+          </article>
+          <article class="insight-panel">
+            <h3>3. 各月份销量（估）</h3>
+            <div id="monthlySalesInsights" class="insight-content"></div>
+          </article>
+          <article class="insight-panel">
+            <h3>4. 款式流行趋势（估）</h3>
+            <div id="styleTrendInsights" class="insight-content"></div>
+          </article>
         </div>
       </section>
     </main>

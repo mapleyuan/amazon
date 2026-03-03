@@ -10,12 +10,35 @@ const STATUS_CLASSES = [
 ];
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const ONE_YEAR_DAYS = 365;
+const KEYWORD_STOPWORDS = new Set([
+  "with",
+  "for",
+  "and",
+  "the",
+  "from",
+  "pack",
+  "set",
+  "inch",
+  "inches",
+  "piece",
+  "pieces",
+  "amazon",
+  "best",
+  "seller",
+  "sellers",
+  "home",
+  "kitchen",
+  "new",
+  "release",
+  "releases",
+]);
 
 let manifest = null;
 let dailyPayload = null;
 let filteredItems = [];
 const dailyCache = new Map();
 let trendRequestId = 0;
+let insightRequestId = 0;
 
 const compareState = {
   enabled: false,
@@ -67,6 +90,444 @@ function parseSnapshotDate(value) {
     return null;
   }
   return stamp;
+}
+
+function monthKeyFromDate(date) {
+  const match = String(date || "").match(/^(\d{4})-(\d{2})-\d{2}$/);
+  if (!match) return "";
+  return `${match[1]}-${match[2]}`;
+}
+
+function formatCompactNumber(value) {
+  const parsed = parseNumber(value);
+  if (parsed === null) return "-";
+  return parsed.toLocaleString("en-US");
+}
+
+function avg(values) {
+  if (!values.length) return null;
+  return values.reduce((acc, item) => acc + item, 0) / values.length;
+}
+
+function extractKeywords(title) {
+  const text = String(title || "").toLowerCase();
+  const english = text.match(/[a-z0-9][a-z0-9-]{2,}/g) || [];
+  const chinese = text.match(/[\u4e00-\u9fff]{2,}/g) || [];
+  const combined = [...english, ...chinese];
+  const unique = new Set();
+
+  combined.forEach((rawToken) => {
+    const token = rawToken.replace(/^-+|-+$/g, "");
+    if (!token || token.length < 2) return;
+    if (/^\d+$/.test(token)) return;
+    if (KEYWORD_STOPWORDS.has(token)) return;
+    unique.add(token);
+  });
+
+  return [...unique];
+}
+
+function renderInsightList(containerId, lines) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!Array.isArray(lines)) {
+    return;
+  }
+
+  if (!lines.length) {
+    container.textContent = "暂无足够数据。";
+    return;
+  }
+
+  const ul = document.createElement("ul");
+  ul.className = "insight-list";
+  lines.forEach((line) => {
+    const li = document.createElement("li");
+    li.textContent = line;
+    ul.appendChild(li);
+  });
+  container.appendChild(ul);
+}
+
+function renderKeywordMetrics(containerId, rows, metricLabel) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!Array.isArray(rows)) {
+    return;
+  }
+
+  if (!rows.length) {
+    container.textContent = "样本不足，暂无关键词结果。";
+    return;
+  }
+
+  const table = document.createElement("table");
+  table.className = "mini-table";
+  const thead = document.createElement("thead");
+  thead.innerHTML = `<tr><th>关键词</th><th>${metricLabel}</th><th>样本数</th></tr>`;
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${row.keyword}</td><td>${row.metric}</td><td>${row.itemCount}</td>`;
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  container.appendChild(table);
+}
+
+function buildKeywordStats(items) {
+  const stats = new Map();
+  items.forEach((item) => {
+    const keywords = extractKeywords(item.title);
+    if (!keywords.length) return;
+
+    const traffic = parseNumber(item.sales_month) ?? parseNumber(item.sales_day) ?? 1;
+    const rating = parseNumber(item.rating);
+    const reviewCount = parseNumber(item.review_count) ?? 0;
+
+    keywords.forEach((keyword) => {
+      const prev = stats.get(keyword) || {
+        keyword,
+        traffic: 0,
+        itemCount: 0,
+        ratingSum: 0,
+        ratingCount: 0,
+        reviewSum: 0,
+      };
+      prev.traffic += traffic;
+      prev.itemCount += 1;
+      prev.reviewSum += reviewCount;
+      if (rating !== null) {
+        prev.ratingSum += rating;
+        prev.ratingCount += 1;
+      }
+      stats.set(keyword, prev);
+    });
+  });
+  return [...stats.values()];
+}
+
+function buildReviewInsightLines(items) {
+  if (!items.length) return ["当前筛选结果为空，无法分析口碑。"];
+
+  const rated = items.map((item) => parseNumber(item.rating)).filter((value) => value !== null);
+  if (!rated.length) return ["当前样本缺少评分信息。"];
+
+  const highRated = items.filter((item) => {
+    const rating = parseNumber(item.rating);
+    return rating !== null && rating >= 4.4;
+  });
+  const lowRated = items.filter((item) => {
+    const rating = parseNumber(item.rating);
+    return rating !== null && rating < 4.1;
+  });
+
+  const avgRating = avg(rated) || 0;
+  const highRatio = ((highRated.length / rated.length) * 100).toFixed(1);
+  const lowRatio = ((lowRated.length / rated.length) * 100).toFixed(1);
+
+  const positiveKeywords = buildKeywordStats(highRated)
+    .sort((a, b) => b.traffic - a.traffic)
+    .slice(0, 5)
+    .map((item) => item.keyword);
+  const painKeywords = buildKeywordStats(lowRated)
+    .sort((a, b) => b.reviewSum - a.reviewSum)
+    .slice(0, 5)
+    .map((item) => item.keyword);
+
+  return [
+    `样本商品 ${items.length}，有评分商品 ${rated.length}，平均评分 ${avgRating.toFixed(2)}。`,
+    `高口碑占比(>=4.4): ${highRatio}%；风险占比(<4.1): ${lowRatio}%。`,
+    `好评优势关键词: ${positiveKeywords.length ? positiveKeywords.join("、") : "暂无明显集中词"}`,
+    `差评潜在痛点词: ${painKeywords.length ? painKeywords.join("、") : "低评分样本不足，暂无法归纳"}`,
+  ];
+}
+
+function buildKeywordInsightRows(items) {
+  const stats = buildKeywordStats(items);
+  if (!stats.length) {
+    return { trafficRows: [], conversionRows: [] };
+  }
+
+  const scored = stats.map((item) => {
+    const avgRating = item.ratingCount ? item.ratingSum / item.ratingCount : 4;
+    const conversionScore = (item.traffic / Math.max(1, item.itemCount)) * avgRating * Math.log10(item.reviewSum + 10);
+    return {
+      ...item,
+      conversionScore,
+    };
+  });
+
+  const filtered = scored.filter((item) => item.itemCount >= 2);
+  const candidates = filtered.length >= 5 ? filtered : scored;
+
+  const trafficRows = [...candidates]
+    .sort((a, b) => b.traffic - a.traffic)
+    .slice(0, 8)
+    .map((item) => ({
+      keyword: item.keyword,
+      metric: formatCompactNumber(Math.round(item.traffic)),
+      itemCount: item.itemCount,
+    }));
+
+  const conversionRows = [...candidates]
+    .sort((a, b) => b.conversionScore - a.conversionScore)
+    .slice(0, 8)
+    .map((item) => ({
+      keyword: item.keyword,
+      metric: item.conversionScore.toFixed(1),
+      itemCount: item.itemCount,
+    }));
+
+  return { trafficRows, conversionRows };
+}
+
+function renderMonthlySalesInsights(rows, asin) {
+  const container = document.getElementById("monthlySalesInsights");
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!Array.isArray(rows)) {
+    return;
+  }
+
+  if (!asin) {
+    container.textContent = "当前没有可分析的 ASIN。";
+    return;
+  }
+  if (!rows.length) {
+    container.textContent = "近一年暂无该商品的月度样本。";
+    return;
+  }
+
+  const title = document.createElement("p");
+  title.className = "muted";
+  title.textContent = `ASIN: ${asin}`;
+  container.appendChild(title);
+
+  const table = document.createElement("table");
+  table.className = "mini-table";
+  table.innerHTML = "<thead><tr><th>月份</th><th>月销量(估)</th><th>采样日</th><th>月均排名</th></tr></thead>";
+
+  const tbody = document.createElement("tbody");
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${row.month}</td>
+      <td>${formatCompactNumber(row.monthSales)}</td>
+      <td>${row.sampleDays}</td>
+      <td>${row.avgRank === null ? "-" : row.avgRank.toFixed(1)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  container.appendChild(table);
+}
+
+function buildStyleTrendLines(historyRows) {
+  if (!historyRows.length) {
+    return ["近一年没有可用样本，无法计算款式趋势。"];
+  }
+
+  const monthStats = new Map();
+  historyRows.forEach((entry) => {
+    const month = monthKeyFromDate(entry.date);
+    if (!month) return;
+    const tokenMap = monthStats.get(month) || new Map();
+
+    entry.items.forEach((item) => {
+      const traffic = parseNumber(item.sales_month) ?? parseNumber(item.sales_day) ?? 1;
+      extractKeywords(item.title).forEach((keyword) => {
+        tokenMap.set(keyword, (tokenMap.get(keyword) || 0) + traffic);
+      });
+    });
+    monthStats.set(month, tokenMap);
+  });
+
+  const months = [...monthStats.keys()].sort();
+  if (!months.length) {
+    return ["没有可用关键词样本。"];
+  }
+
+  const latestMonth = months[months.length - 1];
+  const latest = monthStats.get(latestMonth) || new Map();
+  const hotKeywords = [...latest.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([keyword, score]) => `${keyword}(${Math.round(score)})`);
+
+  if (months.length < 2) {
+    return [
+      `仅有 1 个月样本（${latestMonth}），暂无法计算环比趋势。`,
+      `当月热门款式词: ${hotKeywords.length ? hotKeywords.join("、") : "暂无"}`,
+    ];
+  }
+
+  const prevMonth = months[months.length - 2];
+  const prev = monthStats.get(prevMonth) || new Map();
+  const growth = [];
+  latest.forEach((score, keyword) => {
+    const delta = score - (prev.get(keyword) || 0);
+    growth.push({ keyword, score, delta });
+  });
+
+  const rising = growth
+    .filter((item) => item.delta > 0)
+    .sort((a, b) => b.delta - a.delta)
+    .slice(0, 6)
+    .map((item) => `${item.keyword}(+${Math.round(item.delta)})`);
+
+  return [
+    `样本月份: ${months[0]} ~ ${latestMonth}（共 ${months.length} 个月）。`,
+    `最新月热门款式词: ${hotKeywords.length ? hotKeywords.join("、") : "暂无"}`,
+    `相对上月上升款式词: ${rising.length ? rising.join("、") : "暂无明显上升词"}`,
+  ];
+}
+
+function populateAnalysisAsinOptions() {
+  const select = document.getElementById("analysisAsin");
+  if (!select) return;
+
+  const previous = select.value;
+  const unique = [];
+  const seen = new Set();
+  filteredItems.forEach((item) => {
+    const asin = String(item.asin || "").trim();
+    if (!asin || seen.has(asin)) return;
+    seen.add(asin);
+    unique.push(item);
+  });
+
+  select.innerHTML = '<option value="">自动选择当前Top1</option>';
+  unique.forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.asin;
+    const title = String(item.title || "").slice(0, 42);
+    option.textContent = `${item.asin} | #${item.rank ?? "-"} | ${title}`;
+    select.appendChild(option);
+  });
+
+  if (previous && [...select.options].some((opt) => opt.value === previous)) {
+    select.value = previous;
+  }
+}
+
+function buildMonthlySalesRows(historyRows, asin) {
+  if (!asin) return [];
+  const monthly = new Map();
+
+  historyRows.forEach((entry) => {
+    const month = monthKeyFromDate(entry.date);
+    if (!month) return;
+
+    let daySales = 0;
+    const ranks = [];
+    entry.items.forEach((item) => {
+      if (item.asin !== asin) return;
+      daySales += parseNumber(item.sales_day) ?? 0;
+      const rank = parseNumber(item.rank);
+      if (rank !== null) ranks.push(rank);
+    });
+
+    if (daySales === 0 && !ranks.length) return;
+    const record = monthly.get(month) || { month, monthSales: 0, sampleDays: 0, rankSum: 0, rankDays: 0 };
+    record.monthSales += daySales;
+    record.sampleDays += 1;
+    if (ranks.length) {
+      record.rankSum += avg(ranks) || 0;
+      record.rankDays += 1;
+    }
+    monthly.set(month, record);
+  });
+
+  return [...monthly.values()]
+    .sort((a, b) => String(a.month).localeCompare(String(b.month)))
+    .map((item) => ({
+      month: item.month,
+      monthSales: Math.round(item.monthSales),
+      sampleDays: item.sampleDays,
+      avgRank: item.rankDays ? item.rankSum / item.rankDays : null,
+    }));
+}
+
+async function collectScopeHistoryWithinOneYear(filters, anchorDate) {
+  const anchorStamp = parseSnapshotDate(anchorDate);
+  if (anchorStamp === null) return [];
+
+  const windowStartStamp = anchorStamp - ONE_YEAR_DAYS * ONE_DAY_MS;
+  const candidateDates = new Set(getManifestDates());
+  if (anchorDate) candidateDates.add(anchorDate);
+
+  const dates = [...candidateDates]
+    .filter((date) => {
+      const stamp = parseSnapshotDate(date);
+      return stamp !== null && stamp >= windowStartStamp && stamp <= anchorStamp;
+    })
+    .sort((left, right) => {
+      const leftStamp = parseSnapshotDate(left) || 0;
+      const rightStamp = parseSnapshotDate(right) || 0;
+      return leftStamp - rightStamp;
+    });
+
+  const historyRows = [];
+  for (const date of dates) {
+    try {
+      const payload = await getDailyPayload(date);
+      const scoped = filterItemsFromPayload(payload, filters);
+      if (!scoped.length) continue;
+      historyRows.push({ date, items: scoped });
+    } catch (_error) {
+      // Skip single-day failures and keep available samples.
+    }
+  }
+  return historyRows;
+}
+
+function resetInsightsView(message) {
+  setText("insightStatus", message || "点击“分析当前竞品”生成结果");
+  renderInsightList("reviewInsights", null);
+  renderKeywordMetrics("trafficKeywords", null, "估算流量");
+  renderKeywordMetrics("conversionKeywords", null, "转化分");
+  renderMonthlySalesInsights(null, "");
+  renderInsightList("styleTrendInsights", null);
+}
+
+async function runCompetitiveInsights() {
+  if (!dailyPayload) {
+    setText("insightStatus", "当前无可分析数据。");
+    return;
+  }
+
+  insightRequestId += 1;
+  const currentRequestId = insightRequestId;
+
+  const filters = currentFilters();
+  const anchorDate = document.getElementById("snapshot_date").value;
+  const selectedAsin = document.getElementById("analysisAsin").value || (filteredItems[0]?.asin || "");
+
+  resetInsightsView("分析中，请稍候...");
+
+  const historyRows = await collectScopeHistoryWithinOneYear(filters, anchorDate);
+  if (currentRequestId !== insightRequestId) return;
+
+  renderInsightList("reviewInsights", buildReviewInsightLines(filteredItems));
+  const keywordInsights = buildKeywordInsightRows(filteredItems);
+  renderKeywordMetrics("trafficKeywords", keywordInsights.trafficRows, "估算流量");
+  renderKeywordMetrics("conversionKeywords", keywordInsights.conversionRows, "转化分");
+  renderMonthlySalesInsights(buildMonthlySalesRows(historyRows, selectedAsin), selectedAsin);
+  renderInsightList("styleTrendInsights", buildStyleTrendLines(historyRows));
+
+  setText(
+    "insightStatus",
+    `已完成分析：当前样本 ${filteredItems.length} 条，历史采样日 ${historyRows.length} 天（近一年）。`,
+  );
 }
 
 function getManifestDates() {
@@ -605,6 +1066,8 @@ function applyFilters() {
 
   renderTable(filteredItems);
   renderSummary();
+  populateAnalysisAsinOptions();
+  resetInsightsView("筛选条件已更新，请点击“分析当前竞品”刷新洞察");
 }
 
 async function getDailyPayload(date) {
@@ -624,6 +1087,8 @@ async function loadDailyPayload(date) {
     clearCompareState();
     renderTable([]);
     renderSummary();
+    populateAnalysisAsinOptions();
+    resetInsightsView("暂无可分析数据。");
     return;
   }
 
@@ -699,6 +1164,12 @@ async function initialize() {
   document.getElementById("sort_order").addEventListener("change", applyFilters);
   document.getElementById("searchRanks").addEventListener("click", applyFilters);
   document.getElementById("downloadCsv").addEventListener("click", downloadCsv);
+  document.getElementById("runInsights").addEventListener("click", () => {
+    runCompetitiveInsights().catch(showError);
+  });
+  document.getElementById("analysisAsin").addEventListener("change", () => {
+    resetInsightsView("已切换 ASIN，请点击“分析当前竞品”更新结果");
+  });
   document.getElementById("compareYesterday").addEventListener("click", () => {
     compareWithPreviousDay().catch(showError);
   });
@@ -715,6 +1186,7 @@ async function initialize() {
     }
   });
 
+  resetInsightsView("点击“分析当前竞品”生成结果");
   await handleDateChange(document.getElementById("snapshot_date").value);
 }
 
