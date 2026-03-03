@@ -314,6 +314,58 @@ class PublishStaticDataScriptTests(unittest.TestCase):
                 )
                 self.assertTrue((daily_dir / "2026-03-04.json").exists())
 
+    def test_main_with_zero_retention_keeps_all_historical_files(self) -> None:
+        from scripts import publish_static_data
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            data_dir = base / "data"
+            daily_dir = data_dir / "daily"
+            daily_dir.mkdir(parents=True, exist_ok=True)
+
+            historical_dates = [f"2026-01-{day:02d}" for day in range(1, 32)]
+            for date in historical_dates:
+                (daily_dir / f"{date}.json").write_text(
+                    json.dumps({"snapshot_date": date, "items": []}, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+
+            (data_dir / "manifest.json").write_text(
+                json.dumps({"available_dates": list(reversed(historical_dates))}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            row = {
+                "site": "amazon.com",
+                "board_type": "best_sellers",
+                "category_key": "cat-1",
+                "category_name": "Electronics",
+                "rank": 1,
+                "asin": "B000000001",
+                "title": "Product 1",
+                "brand": "Brand",
+                "price_text": "$9.99",
+                "rating": 4.5,
+                "review_count": 100,
+                "detail_url": "https://www.amazon.com/dp/B000000001",
+            }
+
+            with patch.object(publish_static_data, "WEB_DATA_DIR", data_dir):
+                with patch.object(
+                    publish_static_data,
+                    "crawl_all_rows_for_targets",
+                    return_value=("2026-03-05", [row]),
+                ):
+                    code = publish_static_data.main(["--source", "auto", "--retention-days", "0"])
+
+                self.assertEqual(code, 0)
+                manifest = json.loads((data_dir / "manifest.json").read_text(encoding="utf-8"))
+                self.assertEqual(manifest["retention_days"], 0)
+                self.assertEqual(len(manifest["available_dates"]), len(historical_dates) + 1)
+                self.assertTrue((daily_dir / "2026-03-05.json").exists())
+                for date in historical_dates:
+                    self.assertTrue((daily_dir / f"{date}.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

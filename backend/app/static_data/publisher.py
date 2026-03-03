@@ -19,7 +19,9 @@ def merge_available_dates(existing: list[str], new_date: str | None, retention_d
         dates.add(new_date)
 
     ordered = sorted(dates, reverse=True)
-    limit = max(1, int(retention_days))
+    limit = int(retention_days)
+    if limit <= 0:
+        return ordered
     return ordered[:limit]
 
 

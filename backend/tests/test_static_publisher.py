@@ -14,6 +14,16 @@ class StaticPublisherTests(unittest.TestCase):
         self.assertEqual(merged[0], "2026-02-01")
         self.assertNotIn("2026-01-01", merged)
 
+    def test_merge_available_dates_with_zero_retention_keeps_all(self) -> None:
+        from app.static_data.publisher import merge_available_dates
+
+        existing = [f"2026-01-{day:02d}" for day in range(1, 31)]
+        merged = merge_available_dates(existing=existing, new_date="2026-02-01", retention_days=0)
+
+        self.assertEqual(len(merged), 31)
+        self.assertEqual(merged[0], "2026-02-01")
+        self.assertEqual(merged[-1], "2026-01-01")
+
     def test_build_daily_payload_groups_categories_and_stats(self) -> None:
         from app.static_data.publisher import build_daily_payload
 

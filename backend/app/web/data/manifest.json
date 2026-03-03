@@ -6,9 +6,11 @@
   "status": "success",
   "source": "auto",
   "message": "",
-  "retention_days": 30,
+  "retention_days": 0,
   "available_dates": [
-    "2026-03-03"
+    "2026-03-03",
+    "2026-03-02",
+    "2026-03-01"
   ],
   "default_filters": {
     "site": "amazon.com",
