@@ -8,6 +8,13 @@ on:
     paths:
       - ".github/workflows/deploy-pages.yml"
       - "backend/app/web/**"
+  workflow_run:
+    workflows:
+      - Refresh Daily Static Data
+    types:
+      - completed
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -21,6 +28,7 @@ concurrency:
 
 jobs:
   build:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -35,6 +43,7 @@ jobs:
           path: backend/app/web
 
   deploy:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     needs: build
     runs-on: ubuntu-latest
     environment:
