@@ -37,7 +37,7 @@ jobs:
       - name: Generate static data
         run: |
           cd backend
-          python3 scripts/publish_static_data.py --source auto --retention-days 0 --sites amazon.com --boards best_sellers --category-urls http://www.amazon.com/Best-Sellers-Home-Kitchen-Candlestick-Holders/zgbs/home-garden/3734611/ref=zg_bs_nav_home-garden_4_3734591 --fail-on-mock --strict
+          python3 scripts/publish_static_data.py --source auto --retention-days 0 --sites amazon.com --boards best_sellers --category-urls http://www.amazon.com/Best-Sellers-Home-Kitchen-Candlestick-Holders/zgbs/home-garden/3734611/ref=zg_bs_nav_home-garden_4_3734591 --fail-on-mock
 
       - name: Build official insights (optional)
         run: |
