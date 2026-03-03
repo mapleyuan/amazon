@@ -41,8 +41,15 @@ jobs:
 
       - name: Build official insights (optional)
         run: |
-          if [ -z "$AMAZON_SPAPI_CLIENT_ID" ] || [ -z "$AMAZON_SPAPI_CLIENT_SECRET" ] || [ -z "$AMAZON_SPAPI_REFRESH_TOKEN" ] || [ -z "$AMAZON_SPAPI_AWS_ACCESS_KEY_ID" ] || [ -z "$AMAZON_SPAPI_AWS_SECRET_ACCESS_KEY" ]; then
-            echo "SP-API credentials missing; skip official insights refresh."
+          missing=()
+          for name in AMAZON_SPAPI_CLIENT_ID AMAZON_SPAPI_CLIENT_SECRET AMAZON_SPAPI_REFRESH_TOKEN AMAZON_SPAPI_AWS_ACCESS_KEY_ID AMAZON_SPAPI_AWS_SECRET_ACCESS_KEY; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "SP-API credentials missing (${missing[*]}); skip official insights refresh."
             exit 0
           fi
 
