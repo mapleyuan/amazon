@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-03-03T03:42:20Z",
-  "last_attempt_at": "2026-03-03T03:42:20Z",
+  "generated_at": "2026-03-03T04:23:42Z",
+  "last_attempt_at": "2026-03-03T04:23:42Z",
   "last_success_date": "2026-03-03",
-  "last_success_at": "2026-03-03T03:42:20Z",
+  "last_success_at": "2026-03-03T04:23:42Z",
   "status": "success",
-  "source": "manual",
+  "source": "auto",
   "message": "",
   "retention_days": 30,
   "available_dates": [
