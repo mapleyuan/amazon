@@ -8,11 +8,14 @@ const STATUS_CLASSES = [
   "status-empty",
   "status-error",
 ];
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+const ONE_YEAR_DAYS = 365;
 
 let manifest = null;
 let dailyPayload = null;
 let filteredItems = [];
 const dailyCache = new Map();
+let trendRequestId = 0;
 
 const compareState = {
   enabled: false,
@@ -45,6 +48,25 @@ function parseNumber(value) {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function parseSnapshotDate(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const stamp = Date.UTC(year, month, day);
+  const check = new Date(stamp);
+  if (
+    check.getUTCFullYear() !== year ||
+    check.getUTCMonth() !== month ||
+    check.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return stamp;
 }
 
 function getManifestDates() {
@@ -250,6 +272,158 @@ function compareKey(item) {
   return `${item.site}||${item.board_type}||${item.category_key}||${item.asin}`;
 }
 
+function openTrendModal() {
+  const modal = document.getElementById("trendModal");
+  if (!modal) return;
+  modal.classList.add("open");
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function closeTrendModal() {
+  const modal = document.getElementById("trendModal");
+  if (!modal) return;
+  modal.classList.remove("open");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+function renderTrendTable(points) {
+  const tbody = document.querySelector("#trendTable tbody");
+  if (!tbody) return;
+
+  tbody.innerHTML = "";
+  points.forEach((point) => {
+    const tr = document.createElement("tr");
+    const values = [
+      point.snapshot_date || "",
+      point.rank ?? "-",
+      point.sales_day ?? "-",
+      point.sales_month ?? "-",
+      point.sales_year ?? "-",
+    ];
+    values.forEach((value) => {
+      const td = document.createElement("td");
+      td.textContent = String(value);
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+function renderTrendChart(points) {
+  const chart = document.getElementById("trendChart");
+  if (!chart) return;
+
+  chart.innerHTML = "";
+  const usablePoints = points.filter((point) => point.sales_year !== null);
+  if (!usablePoints.length) {
+    const empty = document.createElement("p");
+    empty.className = "trend-empty";
+    empty.textContent = "近一年暂无销量估算数据。";
+    chart.appendChild(empty);
+    return;
+  }
+
+  const maxValue = Math.max(...usablePoints.map((point) => point.sales_year || 0), 1);
+  usablePoints.forEach((point) => {
+    const row = document.createElement("div");
+    row.className = "trend-bar-row";
+
+    const date = document.createElement("span");
+    date.className = "trend-bar-date";
+    date.textContent = point.snapshot_date;
+
+    const track = document.createElement("div");
+    track.className = "trend-bar-track";
+
+    const fill = document.createElement("div");
+    fill.className = "trend-bar-fill";
+    const widthPercent = Math.max(4, Math.round(((point.sales_year || 0) / maxValue) * 100));
+    fill.style.width = `${widthPercent}%`;
+    track.appendChild(fill);
+
+    const value = document.createElement("span");
+    value.className = "trend-bar-value";
+    value.textContent = String(point.sales_year ?? "-");
+
+    row.appendChild(date);
+    row.appendChild(track);
+    row.appendChild(value);
+    chart.appendChild(row);
+  });
+}
+
+async function collectSalesTrendWithinOneYear(item) {
+  const anchorDate = item.snapshot_date || document.getElementById("snapshot_date").value;
+  const anchorStamp = parseSnapshotDate(anchorDate);
+  if (anchorStamp === null) return [];
+
+  const windowStartStamp = anchorStamp - ONE_YEAR_DAYS * ONE_DAY_MS;
+  const candidateDates = new Set(getManifestDates());
+  if (anchorDate) candidateDates.add(anchorDate);
+
+  const dates = [...candidateDates]
+    .filter((date) => {
+      const stamp = parseSnapshotDate(date);
+      return stamp !== null && stamp >= windowStartStamp && stamp <= anchorStamp;
+    })
+    .sort((left, right) => {
+      const leftStamp = parseSnapshotDate(left) || 0;
+      const rightStamp = parseSnapshotDate(right) || 0;
+      return leftStamp - rightStamp;
+    });
+
+  const key = compareKey(item);
+  const series = [];
+
+  for (const date of dates) {
+    try {
+      const payload = await getDailyPayload(date);
+      const found = (payload.items || []).find((entry) => compareKey(entry) === key);
+      if (!found) continue;
+
+      series.push({
+        snapshot_date: date,
+        rank: parseNumber(found.rank),
+        sales_day: parseNumber(found.sales_day),
+        sales_month: parseNumber(found.sales_month),
+        sales_year: parseNumber(found.sales_year),
+      });
+    } catch (_error) {
+      // Ignore partial daily payload failures so trend still works with remaining dates.
+    }
+  }
+
+  return series;
+}
+
+async function showSalesTrendForItem(item) {
+  trendRequestId += 1;
+  const currentRequestId = trendRequestId;
+
+  const asin = item.asin || "-";
+  const title = item.title || "未知商品";
+  setText("trendTitle", `近一年销量趋势：${title} (${asin})`);
+  setText("trendInfo", "正在加载近一年走势...");
+  renderTrendChart([]);
+  renderTrendTable([]);
+  openTrendModal();
+
+  const points = await collectSalesTrendWithinOneYear(item);
+  if (currentRequestId !== trendRequestId) return;
+
+  if (!points.length) {
+    setText("trendInfo", "近一年内未找到该商品的采样记录。");
+    return;
+  }
+
+  renderTrendChart(points);
+  renderTrendTable(points);
+
+  const firstDate = points[0].snapshot_date;
+  const lastDate = points[points.length - 1].snapshot_date;
+  setText("trendInfo", `样本窗口：${firstDate} ~ ${lastDate}，共 ${points.length} 个采样日。`);
+}
+
 function buildCompareData(todayItems, prevPayload, filters) {
   const prevItems = filterItemsFromPayload(prevPayload, filters);
   const prevRankMap = new Map();
@@ -320,7 +494,20 @@ function renderTable(items) {
       <td>${item.rating ?? ""}</td>
       <td>${item.review_count ?? ""}</td>
       <td>${detailCell}</td>
+      <td></td>
     `;
+    const trendButton = document.createElement("button");
+    trendButton.type = "button";
+    trendButton.className = "trend-btn";
+    trendButton.textContent = "看近1年趋势";
+    trendButton.addEventListener("click", () => {
+      showSalesTrendForItem(item).catch(showError);
+    });
+
+    const trendCell = tr.lastElementChild;
+    if (trendCell) {
+      trendCell.appendChild(trendButton);
+    }
     tbody.appendChild(tr);
   });
 }
@@ -442,6 +629,7 @@ async function loadDailyPayload(date) {
 
   dailyPayload = await getDailyPayload(date);
   clearCompareState();
+  closeTrendModal();
   rebuildCategoryOptions();
   applyFilters();
 }
@@ -515,6 +703,17 @@ async function initialize() {
     compareWithPreviousDay().catch(showError);
   });
   document.getElementById("clearCompare").addEventListener("click", clearCompare);
+  document.getElementById("trendClose").addEventListener("click", closeTrendModal);
+  document.getElementById("trendModal").addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) {
+      closeTrendModal();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeTrendModal();
+    }
+  });
 
   await handleDateChange(document.getElementById("snapshot_date").value);
 }
