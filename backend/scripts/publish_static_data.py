@@ -70,17 +70,33 @@ def _cleanup_old_daily_files(allowed_dates: list[str]) -> None:
 
 
 def crawl_all_rows() -> tuple[str, list[dict[str, Any]]]:
-    return crawl_all_rows_for_targets(sites=SITES, boards=BOARDS)
+    return crawl_all_rows_for_targets(
+        sites=SITES,
+        boards=BOARDS,
+        category_keywords=[],
+        category_urls=[],
+    )
 
 
-def crawl_all_rows_for_targets(*, sites: list[str], boards: list[str]) -> tuple[str, list[dict[str, Any]]]:
+def crawl_all_rows_for_targets(
+    *,
+    sites: list[str],
+    boards: list[str],
+    category_keywords: list[str],
+    category_urls: list[str],
+) -> tuple[str, list[dict[str, Any]]]:
     snapshot_date = datetime.now(timezone.utc).date().isoformat()
     rows: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str, str, str]] = set()
 
     for site in sites:
         for board_type in boards:
-            board_rows = crawl_site_board(site, board_type)
+            board_rows = crawl_site_board(
+                site,
+                board_type,
+                category_keywords=category_keywords,
+                category_urls=category_urls,
+            )
             for row in board_rows:
                 normalized = dict(row)
                 normalized["snapshot_date"] = normalized.get("snapshot_date") or snapshot_date
@@ -123,6 +139,21 @@ def _parse_csv_values(raw: str, choices: list[str], flag_name: str) -> list[str]
     return deduped
 
 
+def _parse_freeform_csv(raw: str) -> list[str]:
+    if not raw:
+        return []
+    values = [item.strip() for item in raw.split(",") if item.strip()]
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        normalized = value.lower()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        deduped.append(value)
+    return deduped
+
+
 def _contains_mock_rows(rows: list[dict[str, Any]]) -> bool:
     for row in rows:
         category_key = str(row.get("category_key") or "").strip().lower()
@@ -145,6 +176,16 @@ def main(argv: list[str] | None = None) -> int:
         "--boards",
         default="",
         help="Comma separated boards, e.g. best_sellers,new_releases,movers_and_shakers",
+    )
+    parser.add_argument(
+        "--category-keywords",
+        default="",
+        help="Comma separated category keywords (match in category label/url), e.g. candle,candlestick,home-decor",
+    )
+    parser.add_argument(
+        "--category-urls",
+        default="",
+        help="Comma separated absolute category URLs for precise targeting",
     )
     parser.add_argument(
         "--source",
@@ -170,13 +211,20 @@ def main(argv: list[str] | None = None) -> int:
     retention_days = max(1, int(args.retention_days))
     sites = _parse_csv_values(args.sites, SITES, "sites")
     boards = _parse_csv_values(args.boards, BOARDS, "boards")
+    category_keywords = _parse_freeform_csv(args.category_keywords)
+    category_urls = _parse_freeform_csv(args.category_urls)
 
     status = "success"
     message = ""
     available_dates = existing_dates
 
     try:
-        snapshot_date, rows = crawl_all_rows_for_targets(sites=sites, boards=boards)
+        snapshot_date, rows = crawl_all_rows_for_targets(
+            sites=sites,
+            boards=boards,
+            category_keywords=category_keywords,
+            category_urls=category_urls,
+        )
         if not rows:
             raise RuntimeError("crawl returned no rows")
         if args.fail_on_mock and _contains_mock_rows(rows):

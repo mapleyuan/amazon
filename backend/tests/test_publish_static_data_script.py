@@ -99,6 +99,8 @@ class PublishStaticDataScriptTests(unittest.TestCase):
                 mocked_crawl.assert_called_once_with(
                     sites=["amazon.com"],
                     boards=["best_sellers"],
+                    category_keywords=[],
+                    category_urls=[],
                 )
 
     def test_main_writes_source_to_manifest(self) -> None:
@@ -199,6 +201,39 @@ class PublishStaticDataScriptTests(unittest.TestCase):
                 mocked_crawl.assert_called_once_with(
                     sites=["amazon.com"],
                     boards=["best_sellers"],
+                    category_keywords=[],
+                    category_urls=[],
+                )
+
+    def test_main_passes_category_keywords_and_urls_to_crawl(self) -> None:
+        from scripts import publish_static_data
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            with patch.object(publish_static_data, "WEB_DATA_DIR", base / "data"):
+                with patch.object(
+                    publish_static_data,
+                    "crawl_all_rows_for_targets",
+                    return_value=("2026-03-02", []),
+                ) as mocked_crawl:
+                    publish_static_data.main(
+                        [
+                            "--sites",
+                            "amazon.com",
+                            "--boards",
+                            "best_sellers",
+                            "--category-keywords",
+                            "candlestick,candle",
+                            "--category-urls",
+                            "https://www.amazon.com/gp/bestsellers/home-garden/3736561",
+                        ]
+                    )
+
+                mocked_crawl.assert_called_once_with(
+                    sites=["amazon.com"],
+                    boards=["best_sellers"],
+                    category_keywords=["candlestick", "candle"],
+                    category_urls=["https://www.amazon.com/gp/bestsellers/home-garden/3736561"],
                 )
 
 

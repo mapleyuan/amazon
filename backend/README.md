@@ -29,3 +29,17 @@ python3 -m unittest discover -s tests -v
 - `AMAZON_CRAWL_CATEGORY_LIMIT`: category crawl limit per site+board (default `20`)
 - `AMAZON_CRAWL_SOURCE`: crawl source strategy (`direct`, `jina_ai`, or `proxy_template`, default `direct`)
 - `AMAZON_CRAWL_PROXY_TEMPLATE`: used when `AMAZON_CRAWL_SOURCE=proxy_template`; must contain `{url}`
+
+## Publish static data with fine-grained category targeting
+
+```bash
+cd backend
+python3 scripts/publish_static_data.py \
+  --source manual \
+  --sites amazon.com \
+  --boards best_sellers \
+  --category-keywords candlestick,candle,home-decor \
+  --category-urls https://www.amazon.com/gp/bestsellers/home-garden/3736561 \
+  --fail-on-mock \
+  --strict
+```

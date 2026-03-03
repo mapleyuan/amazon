@@ -53,6 +53,101 @@ class CrawlerServiceLimitTests(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self.assertEqual(len({row["category_name"] for row in rows}), 2)
 
+    def test_crawl_site_board_filters_with_category_keywords(self) -> None:
+        from app.core.settings import Settings
+        from app.crawler import service
+
+        fake_settings = Settings(
+            db_path=":memory:",
+            host="127.0.0.1",
+            port=8000,
+            cron_hour_utc=2,
+            cron_minute_utc=0,
+            mock_crawl=False,
+            manual_limit_per_site=3,
+            detail_enrich_limit=0,
+            crawl_category_limit=5,
+            crawl_source="direct",
+            crawl_proxy_template="",
+        )
+
+        parsed_items = [
+            {
+                "asin": "B000000001",
+                "rank": 1,
+                "title": "Product 1",
+                "price_text": "$9.99",
+                "rating": 4.5,
+                "review_count": 100,
+                "detail_url": "/dp/B000000001",
+            }
+        ]
+
+        with patch.object(service, "get_settings", return_value=fake_settings):
+            with patch.object(service, "fetch_html", side_effect=["board", "candles"]):
+                with patch.object(service, "contains_block_page", return_value=False):
+                    with patch.object(
+                        service,
+                        "parse_category_links",
+                        return_value=[
+                            ("/candles", "Candle Holders"),
+                            ("/kitchen", "Kitchen & Dining"),
+                        ],
+                    ):
+                        with patch.object(service, "parse_ranking_page", return_value=parsed_items):
+                            rows = service.crawl_site_board(
+                                "amazon.com",
+                                "best_sellers",
+                                category_keywords=["candle"],
+                            )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["category_name"], "Candle Holders")
+
+    def test_crawl_site_board_uses_category_urls_when_provided(self) -> None:
+        from app.core.settings import Settings
+        from app.crawler import service
+
+        fake_settings = Settings(
+            db_path=":memory:",
+            host="127.0.0.1",
+            port=8000,
+            cron_hour_utc=2,
+            cron_minute_utc=0,
+            mock_crawl=False,
+            manual_limit_per_site=3,
+            detail_enrich_limit=0,
+            crawl_category_limit=5,
+            crawl_source="direct",
+            crawl_proxy_template="",
+        )
+
+        parsed_items = [
+            {
+                "asin": "B000000001",
+                "rank": 1,
+                "title": "Product 1",
+                "price_text": "$9.99",
+                "rating": 4.5,
+                "review_count": 100,
+                "detail_url": "/dp/B000000001",
+            }
+        ]
+
+        category_url = "https://www.amazon.com/gp/bestsellers/home-garden/3736561"
+        with patch.object(service, "get_settings", return_value=fake_settings):
+            with patch.object(service, "fetch_html", return_value="category"):
+                with patch.object(service, "contains_block_page", return_value=False):
+                    with patch.object(service, "parse_ranking_page", return_value=parsed_items):
+                        rows = service.crawl_site_board(
+                            "amazon.com",
+                            "best_sellers",
+                            category_urls=[category_url],
+                        )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["category_name"], "home garden")
+
 
 if __name__ == "__main__":
     unittest.main()

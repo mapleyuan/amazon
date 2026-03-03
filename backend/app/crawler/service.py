@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import hashlib
+from urllib.parse import urlparse
 
 from app.core.settings import get_settings
 from app.crawler.adapters import SITE_BASE, build_board_url
@@ -57,6 +58,47 @@ def _needs_detail_enrichment(row: dict) -> bool:
     )
 
 
+def _category_label_from_url(url: str) -> str:
+    parsed = urlparse(url)
+    path = parsed.path or ""
+    segments = [segment.strip() for segment in path.split("/") if segment.strip()]
+    if not segments:
+        return "custom"
+
+    candidate = segments[-1]
+    for idx, segment in enumerate(segments):
+        if segment in {"zgbs", "gp"} and idx > 0:
+            candidate = segments[idx - 1]
+            break
+
+    if candidate.isdigit() and len(segments) >= 2:
+        candidate = segments[-2]
+
+    cleaned = candidate.replace("Best-Sellers-", "").replace("Best-Seller-", "")
+    cleaned = cleaned.replace("-", " ").strip()
+    return cleaned or "custom"
+
+
+def _filter_category_links(
+    links: list[tuple[str, str]],
+    *,
+    category_keywords: list[str],
+) -> list[tuple[str, str]]:
+    if not category_keywords:
+        return links
+
+    normalized_keywords = [keyword.strip().lower() for keyword in category_keywords if keyword.strip()]
+    if not normalized_keywords:
+        return links
+
+    filtered: list[tuple[str, str]] = []
+    for href, category_name in links:
+        haystack = f"{category_name} {href}".lower()
+        if any(keyword in haystack for keyword in normalized_keywords):
+            filtered.append((href, category_name))
+    return filtered
+
+
 def _enrich_rows_with_detail(rows: list[dict], site: str) -> None:
     settings = get_settings()
     if settings.detail_enrich_limit <= 0:
@@ -106,19 +148,38 @@ def _enrich_rows_with_detail(rows: list[dict], site: str) -> None:
             row["image_url"] = detail["image_url"]
 
 
-def crawl_site_board(site: str, board_type: str) -> list[dict]:
+def crawl_site_board(
+    site: str,
+    board_type: str,
+    *,
+    category_keywords: list[str] | None = None,
+    category_urls: list[str] | None = None,
+) -> list[dict]:
     settings = get_settings()
     if settings.mock_crawl:
         return _mock_rows(site, board_type)
 
     board_url = build_board_url(site, board_type)
-    html_text = fetch_html(board_url, site=site)
-    if contains_block_page(html_text):
-        raise RuntimeError(f"site blocked for {site} {board_type}")
+    selected_urls = [url.strip() for url in (category_urls or []) if url and url.strip()]
+    selected_keywords = [keyword.strip() for keyword in (category_keywords or []) if keyword and keyword.strip()]
 
-    category_links = parse_category_links(html_text)
-    if not category_links:
-        category_links = [(board_url, "root")]
+    if selected_urls:
+        category_links = [(url, _category_label_from_url(url)) for url in selected_urls]
+    else:
+        html_text = fetch_html(board_url, site=site)
+        if contains_block_page(html_text):
+            raise RuntimeError(f"site blocked for {site} {board_type}")
+
+        category_links = parse_category_links(html_text)
+        if not category_links:
+            category_links = [(board_url, "root")]
+
+        category_links = _filter_category_links(
+            category_links,
+            category_keywords=selected_keywords,
+        )
+        if selected_keywords and not category_links:
+            raise RuntimeError(f"no categories matched keywords for {site} {board_type}")
 
     rows: list[dict] = []
     snapshot = datetime.now(timezone.utc).date().isoformat()
