@@ -1,13 +1,14 @@
 {
-  "generated_at": "2026-03-03T17:14:03Z",
-  "last_attempt_at": "2026-03-03T17:14:03Z",
-  "last_success_date": "2026-03-03",
-  "last_success_at": "2026-03-03T17:14:03Z",
+  "generated_at": "2026-03-04T04:17:43Z",
+  "last_attempt_at": "2026-03-04T04:17:43Z",
+  "last_success_date": "2026-03-04",
+  "last_success_at": "2026-03-04T04:17:43Z",
   "status": "success",
   "source": "auto",
   "message": "",
   "retention_days": 0,
   "available_dates": [
+    "2026-03-04",
     "2026-03-03"
   ],
   "default_filters": {
