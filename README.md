@@ -56,6 +56,7 @@ python3 scripts/refresh_public_review_insights.py --snapshot-date 2026-03-03 --s
 该脚本会读取当日 `daily` 数据中的 Top ASIN，抓取公开评论页并归纳正负向主题词，写入：
 
 - `backend/app/web/data/insights/YYYY-MM-DD.json`（`source=public_reviews`）
+- 包含更多评论字段：`avg_rating`、`rating_distribution`、`sentiment`、`positive_snippets`、`negative_snippets`
 
 另外，免费关键词流量/转化近似可用：
 
@@ -65,6 +66,12 @@ python3 scripts/refresh_public_keyword_insights.py --snapshot-date 2026-03-03 --
 ```
 
 该脚本会基于当日商品标题自动生成候选词，抓取公开搜索结果页并写入关键词洞察（`source` 会带上 `public_search_keywords`）。
+
+前端“竞品洞察”支持：
+
+- 分析范围切换：`当前筛选竞品` / `单个竞品(ASIN)`
+- 评论深度图表：评分结构、情感分布、评论摘录
+- 月销量/款式趋势明细导出 CSV
 
 ## 本地手动兜底更新
 

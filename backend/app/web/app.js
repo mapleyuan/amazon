@@ -268,6 +268,226 @@ function buildReviewInsightLines(items) {
   ];
 }
 
+function normalizeSelectedAsin(preferredAsin, items) {
+  const preferred = String(preferredAsin || "").trim();
+  if (preferred) return preferred;
+  const first = Array.isArray(items) ? items.find((item) => String(item.asin || "").trim()) : null;
+  return first ? String(first.asin || "").trim() : "";
+}
+
+function _normalizeRatingDistribution(input) {
+  const base = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  if (!input || typeof input !== "object") return base;
+  Object.keys(base).forEach((key) => {
+    const value = parseNumber(input[key]);
+    base[key] = value === null ? 0 : Math.max(0, Math.round(value));
+  });
+  return base;
+}
+
+function buildReviewDetailFromItems(items, asin) {
+  const scoped = (Array.isArray(items) ? items : []).filter(
+    (item) => !asin || String(item.asin || "").trim() === String(asin || "").trim(),
+  );
+  if (!scoped.length) return null;
+
+  const ratingDistribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  let ratingSum = 0;
+  let ratingCount = 0;
+  let positiveCount = 0;
+  let negativeCount = 0;
+  let neutralCount = 0;
+
+  scoped.forEach((item) => {
+    const rating = parseNumber(item.rating);
+    if (rating === null) return;
+    const bucket = Math.max(1, Math.min(5, Math.round(rating)));
+    ratingDistribution[bucket] += 1;
+    ratingSum += rating;
+    ratingCount += 1;
+    if (rating >= 4.4) positiveCount += 1;
+    else if (rating <= 3.9) negativeCount += 1;
+    else neutralCount += 1;
+  });
+
+  const positiveTopics = buildKeywordStats(
+    scoped.filter((item) => {
+      const rating = parseNumber(item.rating);
+      return rating !== null && rating >= 4.4;
+    }),
+  )
+    .sort((a, b) => b.traffic - a.traffic)
+    .slice(0, 8)
+    .map((item) => ({ topic: item.keyword, mentions: item.itemCount, score: null }));
+
+  const negativeTopics = buildKeywordStats(
+    scoped.filter((item) => {
+      const rating = parseNumber(item.rating);
+      return rating !== null && rating <= 3.9;
+    }),
+  )
+    .sort((a, b) => b.reviewSum - a.reviewSum)
+    .slice(0, 8)
+    .map((item) => ({ topic: item.keyword, mentions: item.itemCount, score: null }));
+
+  const positiveSnippets = scoped
+    .filter((item) => (parseNumber(item.rating) || 0) >= 4.4)
+    .slice(0, 3)
+    .map((item) => String(item.title || "").trim())
+    .filter(Boolean);
+  const negativeSnippets = scoped
+    .filter((item) => (parseNumber(item.rating) || 0) <= 3.9)
+    .slice(0, 3)
+    .map((item) => String(item.title || "").trim())
+    .filter(Boolean);
+
+  return {
+    asin: asin || scoped[0]?.asin || "",
+    avgRating: ratingCount > 0 ? ratingSum / ratingCount : null,
+    sampleReviews: ratingCount,
+    ratingDistribution,
+    sentiment: { positive: positiveCount, neutral: neutralCount, negative: negativeCount },
+    positiveTopics,
+    negativeTopics,
+    positiveSnippets,
+    negativeSnippets,
+    sourceLabel: "估算商品评分",
+  };
+}
+
+function buildReviewDetailFromOfficial(officialPayload, asin) {
+  const topics = Array.isArray(officialPayload?.review_topics) ? officialPayload.review_topics : [];
+  if (!topics.length) return null;
+
+  const selected = topics.find((item) => String(item.asin || "").trim() === String(asin || "").trim()) || topics[0];
+  if (!selected) return null;
+
+  const sourceTags = parseInsightsSourceTags(officialPayload?.source);
+  const sourceLabel = sourceTags.has("public_reviews") ? "公开评论抓取" : "官方评论主题";
+  const sentiment = selected?.sentiment && typeof selected.sentiment === "object" ? selected.sentiment : {};
+  return {
+    asin: String(selected.asin || asin || "").trim(),
+    avgRating: parseNumber(selected.avg_rating),
+    sampleReviews: parseNumber(selected.sample_reviews) || parseNumber(selected.total_reviews) || 0,
+    ratingDistribution: _normalizeRatingDistribution(selected.rating_distribution),
+    sentiment: {
+      positive: parseNumber(sentiment.positive) || 0,
+      neutral: parseNumber(sentiment.neutral) || 0,
+      negative: parseNumber(sentiment.negative) || 0,
+    },
+    positiveTopics: Array.isArray(selected.positive_topics) ? selected.positive_topics : [],
+    negativeTopics: Array.isArray(selected.negative_topics) ? selected.negative_topics : [],
+    positiveSnippets: Array.isArray(selected.positive_snippets) ? selected.positive_snippets : [],
+    negativeSnippets: Array.isArray(selected.negative_snippets) ? selected.negative_snippets : [],
+    sourceLabel,
+  };
+}
+
+function renderMetricBars(container, rows, { negative = false } = {}) {
+  if (!container) return;
+  container.innerHTML = "";
+  if (!Array.isArray(rows) || !rows.length) {
+    container.textContent = "暂无数据。";
+    return;
+  }
+
+  const maxValue = Math.max(...rows.map((row) => parseNumber(row.value) || 0), 1);
+  const wrap = document.createElement("div");
+  wrap.className = "metric-bars";
+
+  rows.forEach((row) => {
+    const value = parseNumber(row.value) || 0;
+    const line = document.createElement("div");
+    line.className = "metric-bar";
+
+    const label = document.createElement("span");
+    label.className = "metric-bar-label";
+    label.textContent = String(row.label || "-");
+
+    const track = document.createElement("div");
+    track.className = "metric-bar-track";
+    const fill = document.createElement("div");
+    fill.className = `metric-bar-fill${negative ? " negative" : ""}`;
+    const width = Math.max(4, Math.round((value / maxValue) * 100));
+    fill.style.width = `${width}%`;
+    track.appendChild(fill);
+
+    const metric = document.createElement("span");
+    metric.className = "metric-bar-value";
+    metric.textContent = String(row.display || formatCompactNumber(value));
+
+    line.appendChild(label);
+    line.appendChild(track);
+    line.appendChild(metric);
+    wrap.appendChild(line);
+  });
+
+  container.appendChild(wrap);
+}
+
+function renderReviewDeepDive(detail) {
+  const ratingContainer = document.getElementById("reviewRatingChart");
+  const sentimentContainer = document.getElementById("reviewSentimentChart");
+  const snippetContainer = document.getElementById("reviewSnippetList");
+  if (!ratingContainer || !sentimentContainer || !snippetContainer) return;
+
+  ratingContainer.innerHTML = "";
+  sentimentContainer.innerHTML = "";
+  snippetContainer.innerHTML = "";
+
+  if (!detail) {
+    ratingContainer.textContent = "暂无单品评论结构数据。";
+    return;
+  }
+
+  const ratingRows = [5, 4, 3, 2, 1].map((bucket) => {
+    const count = parseNumber(detail.ratingDistribution?.[bucket]) || 0;
+    return { label: `${bucket}星`, value: count, display: `${count} 条` };
+  });
+  renderMetricBars(ratingContainer, ratingRows);
+
+  const sentimentRows = [
+    { label: "好评", value: parseNumber(detail.sentiment?.positive) || 0, display: `${parseNumber(detail.sentiment?.positive) || 0}` },
+    { label: "中评", value: parseNumber(detail.sentiment?.neutral) || 0, display: `${parseNumber(detail.sentiment?.neutral) || 0}` },
+    { label: "差评", value: parseNumber(detail.sentiment?.negative) || 0, display: `${parseNumber(detail.sentiment?.negative) || 0}` },
+  ];
+  renderMetricBars(sentimentContainer, sentimentRows, { negative: true });
+
+  const lines = [];
+  const avgRating = parseNumber(detail.avgRating);
+  if (avgRating !== null) {
+    lines.push(`平均评分: ${avgRating.toFixed(2)}（样本 ${detail.sampleReviews || 0}）`);
+  } else {
+    lines.push(`样本量: ${detail.sampleReviews || 0}`);
+  }
+  if (detail.positiveSnippets?.length) {
+    lines.push(`好评摘录: ${detail.positiveSnippets.join(" | ")}`);
+  }
+  if (detail.negativeSnippets?.length) {
+    lines.push(`差评摘录: ${detail.negativeSnippets.join(" | ")}`);
+  }
+
+  if (!lines.length) {
+    snippetContainer.textContent = "暂无评论摘录。";
+    return;
+  }
+  const ul = document.createElement("ul");
+  ul.className = "snippet-list";
+  lines.forEach((line) => {
+    const li = document.createElement("li");
+    li.textContent = line;
+    ul.appendChild(li);
+  });
+  snippetContainer.appendChild(ul);
+}
+
+function clearReviewDeepDive() {
+  ["reviewRatingChart", "reviewSentimentChart", "reviewSnippetList"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = "";
+  });
+}
+
 function buildKeywordInsightRows(items) {
   const stats = buildKeywordStats(items);
   if (!stats.length) {
@@ -675,6 +895,7 @@ function buildReviewInsightLinesFromOfficial(officialPayload, asin) {
   if (!selected) return [];
   const source = String(officialPayload?.source || "").trim();
   const sampleReviews = parseNumber(selected.sample_reviews);
+  const avgRating = parseNumber(selected.avg_rating);
   const sourceTags = parseInsightsSourceTags(source);
   const sourceLabel =
     sourceTags.has("public_reviews")
@@ -682,9 +903,11 @@ function buildReviewInsightLinesFromOfficial(officialPayload, asin) {
       : "官方评论主题";
   const sampleLine =
     sampleReviews !== null && sampleReviews > 0 ? `评论样本: ${sampleReviews} 条（${sourceLabel}）` : "";
+  const avgRatingLine = avgRating !== null ? `样本平均评分: ${avgRating.toFixed(2)}` : "";
 
   return [
     sampleLine,
+    avgRatingLine,
     `ASIN ${selected.asin || asin || "-"} 的${sourceLabel}洞察`,
     `好评主题: ${formatTopicLine(selected.positive_topics)}`,
     `差评痛点: ${formatTopicLine(selected.negative_topics)}`,
@@ -734,13 +957,18 @@ function isPublicSearchKeywordRows(payload) {
   });
 }
 
-function buildKeywordInsightRowsFromOfficial(officialPayload) {
+function buildKeywordInsightRowsFromOfficial(officialPayload, asin = "") {
   const keywords = Array.isArray(officialPayload?.keywords) ? officialPayload.keywords : [];
   if (!keywords.length) {
     return { trafficRows: [], conversionRows: [] };
   }
+  const normalizedAsin = String(asin || "").trim();
+  const asinRows = normalizedAsin
+    ? keywords.filter((item) => String(item.asin || "").trim() === normalizedAsin)
+    : [];
+  const scopedKeywords = asinRows.length ? asinRows : keywords;
 
-  const trafficRows = [...keywords]
+  const trafficRows = [...scopedKeywords]
     .sort((a, b) => (parseNumber(b.impressions) || 0) - (parseNumber(a.impressions) || 0))
     .slice(0, 10)
     .map((item) => ({
@@ -749,7 +977,7 @@ function buildKeywordInsightRowsFromOfficial(officialPayload) {
       itemCount: parseNumber(item.clicks) || 0,
     }));
 
-  const conversionRows = [...keywords]
+  const conversionRows = [...scopedKeywords]
     .map((item) => {
       const explicitCvr = parseNumber(item.cvr);
       if (explicitCvr !== null) {
@@ -949,6 +1177,7 @@ async function getOfficialInsights(date) {
 function resetInsightsView(message) {
   setText("insightStatus", message || "点击“分析当前竞品”生成结果");
   renderInsightList("reviewInsights", null);
+  clearReviewDeepDive();
   renderKeywordMetrics("trafficKeywords", null, "估算流量");
   renderKeywordMetrics("conversionKeywords", null, "转化分");
   renderMonthlySalesInsights(null, "");
@@ -968,7 +1197,12 @@ async function runCompetitiveInsights() {
 
   const filters = currentFilters();
   const anchorDate = document.getElementById("snapshot_date").value;
-  const selectedAsin = document.getElementById("analysisAsin").value || (filteredItems[0]?.asin || "");
+  const analysisScope = document.getElementById("analysisScope")?.value || "all";
+  const selectedAsin = normalizeSelectedAsin(document.getElementById("analysisAsin").value, filteredItems);
+  const scopedItems =
+    analysisScope === "single" && selectedAsin
+      ? filteredItems.filter((item) => String(item.asin || "").trim() === selectedAsin)
+      : filteredItems;
 
   resetInsightsView("分析中，请稍候...");
   const officialPayload = await getOfficialInsights(anchorDate);
@@ -976,6 +1210,15 @@ async function runCompetitiveInsights() {
 
   const historyRows = await collectScopeHistoryWithinOneYear(filters, anchorDate);
   if (currentRequestId !== insightRequestId) return;
+  const scopedHistoryRows =
+    analysisScope === "single" && selectedAsin
+      ? historyRows
+          .map((entry) => ({
+            date: entry.date,
+            items: entry.items.filter((item) => String(item.asin || "").trim() === selectedAsin),
+          }))
+          .filter((entry) => entry.items.length)
+      : historyRows;
 
   const officialKeywordRows = Array.isArray(officialPayload?.keywords) ? officialPayload.keywords.length : 0;
   const officialReviewRows = Array.isArray(officialPayload?.review_topics) ? officialPayload.review_topics.length : 0;
@@ -984,22 +1227,27 @@ async function runCompetitiveInsights() {
   const hasOfficialData = officialKeywordRows + officialReviewRows + officialSalesRows + officialStyleRows > 0;
 
   if (hasOfficialData) {
-    const estimatedKeywordInsights = buildKeywordInsightRows(filteredItems);
-    const officialKeywordInsights = buildKeywordInsightRowsFromOfficial(officialPayload);
+    const estimatedKeywordInsights = buildKeywordInsightRows(scopedItems);
+    const officialKeywordInsights =
+      analysisScope === "single"
+        ? buildKeywordInsightRowsFromOfficial(officialPayload, selectedAsin)
+        : buildKeywordInsightRowsFromOfficial(officialPayload);
     const officialReviewLines = buildReviewInsightLinesFromOfficial(officialPayload, selectedAsin);
     const officialMonthlyRows = buildMonthlySalesRowsFromOfficial(officialPayload, selectedAsin);
-    const officialCompetitorMonthlyRows = buildCompetitorMonthlySalesRowsFromOfficial(officialPayload, filteredItems, 12);
-    const estimatedCompetitorMonthlyRows = buildCompetitorMonthlySalesRows(historyRows, filteredItems, 12);
+    const officialCompetitorMonthlyRows = buildCompetitorMonthlySalesRowsFromOfficial(officialPayload, scopedItems, 12);
+    const estimatedCompetitorMonthlyRows = buildCompetitorMonthlySalesRows(scopedHistoryRows, scopedItems, 12);
     const officialStyleTrendRows = buildStyleTrendRowsFromOfficial(officialPayload, 12);
-    const estimatedStyleTrendRows = buildStyleTrendRows(historyRows, 12);
+    const estimatedStyleTrendRows = buildStyleTrendRows(scopedHistoryRows, 12);
     const officialStyleLines = buildStyleTrendLinesFromOfficial(officialPayload);
+    const reviewDetail = buildReviewDetailFromOfficial(officialPayload, selectedAsin) || buildReviewDetailFromItems(scopedItems, selectedAsin);
 
     const keywordFromPublicSearch = isPublicSearchKeywordRows(officialPayload);
 
     renderInsightList(
       "reviewInsights",
-      officialReviewLines.length ? officialReviewLines : buildReviewInsightLines(filteredItems),
+      officialReviewLines.length ? officialReviewLines : buildReviewInsightLines(scopedItems),
     );
+    renderReviewDeepDive(reviewDetail);
     renderKeywordMetrics(
       "trafficKeywords",
       officialKeywordInsights.trafficRows.length
@@ -1023,7 +1271,7 @@ async function runCompetitiveInsights() {
         : "转化分",
     );
     renderMonthlySalesInsights(
-      officialMonthlyRows.length ? officialMonthlyRows : buildMonthlySalesRows(historyRows, selectedAsin),
+      officialMonthlyRows.length ? officialMonthlyRows : buildMonthlySalesRows(scopedHistoryRows, selectedAsin),
       selectedAsin,
     );
     renderMonthlySalesCompetitorTable(
@@ -1032,7 +1280,7 @@ async function runCompetitiveInsights() {
     );
     renderInsightList(
       "styleTrendInsights",
-      officialStyleLines.length ? officialStyleLines : buildStyleTrendLines(historyRows),
+      officialStyleLines.length ? officialStyleLines : buildStyleTrendLines(scopedHistoryRows),
     );
     renderStyleTrendMonthlyTable(
       officialStyleTrendRows.length ? officialStyleTrendRows : estimatedStyleTrendRows,
@@ -1041,23 +1289,24 @@ async function runCompetitiveInsights() {
 
     setText(
       "insightStatus",
-      `已完成分析：数据源 ${formatInsightsSourceLabel(officialPayload?.source)}（关键词 ${officialKeywordRows}，月销量 ${officialSalesRows}，评论主题 ${officialReviewRows}，款式趋势 ${officialStyleRows}）。`,
+      `已完成分析：${analysisScope === "single" && selectedAsin ? `单品 ${selectedAsin} | ` : ""}数据源 ${formatInsightsSourceLabel(officialPayload?.source)}（关键词 ${officialKeywordRows}，月销量 ${officialSalesRows}，评论主题 ${officialReviewRows}，款式趋势 ${officialStyleRows}）。`,
     );
     return;
   }
 
-  renderInsightList("reviewInsights", buildReviewInsightLines(filteredItems));
-  const keywordInsights = buildKeywordInsightRows(filteredItems);
+  renderInsightList("reviewInsights", buildReviewInsightLines(scopedItems));
+  renderReviewDeepDive(buildReviewDetailFromItems(scopedItems, selectedAsin));
+  const keywordInsights = buildKeywordInsightRows(scopedItems);
   renderKeywordMetrics("trafficKeywords", keywordInsights.trafficRows, "估算流量");
   renderKeywordMetrics("conversionKeywords", keywordInsights.conversionRows, "转化分");
-  renderMonthlySalesInsights(buildMonthlySalesRows(historyRows, selectedAsin), selectedAsin);
-  renderMonthlySalesCompetitorTable(buildCompetitorMonthlySalesRows(historyRows, filteredItems, 12), "估算月销量");
-  renderInsightList("styleTrendInsights", buildStyleTrendLines(historyRows));
-  renderStyleTrendMonthlyTable(buildStyleTrendRows(historyRows, 12), "估算款式趋势");
+  renderMonthlySalesInsights(buildMonthlySalesRows(scopedHistoryRows, selectedAsin), selectedAsin);
+  renderMonthlySalesCompetitorTable(buildCompetitorMonthlySalesRows(scopedHistoryRows, scopedItems, 12), "估算月销量");
+  renderInsightList("styleTrendInsights", buildStyleTrendLines(scopedHistoryRows));
+  renderStyleTrendMonthlyTable(buildStyleTrendRows(scopedHistoryRows, 12), "估算款式趋势");
 
   setText(
     "insightStatus",
-    `已完成分析：当前样本 ${filteredItems.length} 条，历史采样日 ${historyRows.length} 天（近一年，估算模式）。`,
+    `已完成分析：${analysisScope === "single" && selectedAsin ? `单品 ${selectedAsin} | ` : ""}当前样本 ${scopedItems.length} 条，历史采样日 ${scopedHistoryRows.length} 天（近一年，估算模式）。`,
   );
 }
 
@@ -1771,6 +2020,9 @@ async function initialize() {
   document.getElementById("downloadStyleTrendCsv").addEventListener("click", downloadStyleTrendCsv);
   document.getElementById("runInsights").addEventListener("click", () => {
     runCompetitiveInsights().catch(showError);
+  });
+  document.getElementById("analysisScope").addEventListener("change", () => {
+    resetInsightsView("已切换分析范围，请点击“分析当前竞品”更新结果");
   });
   document.getElementById("analysisAsin").addEventListener("change", () => {
     resetInsightsView("已切换 ASIN，请点击“分析当前竞品”更新结果");

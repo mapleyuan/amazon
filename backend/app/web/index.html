@@ -64,7 +64,12 @@
           <button id="runInsights" type="button">分析当前竞品</button>
         </div>
         <div class="row">
-          <label for="analysisAsin">月销量分析 ASIN:</label>
+          <label for="analysisScope">分析范围:</label>
+          <select id="analysisScope">
+            <option value="all">当前筛选竞品（默认）</option>
+            <option value="single">单个竞品（按 ASIN）</option>
+          </select>
+          <label for="analysisAsin">单品 ASIN:</label>
           <select id="analysisAsin">
             <option value="">自动选择当前Top1</option>
           </select>
@@ -96,6 +101,9 @@
           <article class="insight-panel">
             <h3>1. 评论口碑与痛点（代理）</h3>
             <div id="reviewInsights" class="insight-content"></div>
+            <div id="reviewRatingChart" class="insight-content"></div>
+            <div id="reviewSentimentChart" class="insight-content"></div>
+            <div id="reviewSnippetList" class="insight-content"></div>
           </article>
           <article class="insight-panel">
             <h3>2. 流量关键词与转化关键词（估）</h3>

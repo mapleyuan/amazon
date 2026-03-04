@@ -61,6 +61,11 @@ Arrived bent and unstable after one week.
             self.assertEqual(payload["stats"]["review_topic_asins"], 1)
             self.assertEqual(len(payload["review_topics"]), 1)
             self.assertGreaterEqual(payload["review_topics"][0]["sample_reviews"], 2)
+            self.assertIn("avg_rating", payload["review_topics"][0])
+            self.assertIn("rating_distribution", payload["review_topics"][0])
+            self.assertIn("sentiment", payload["review_topics"][0])
+            self.assertIn("positive_snippets", payload["review_topics"][0])
+            self.assertIn("negative_snippets", payload["review_topics"][0])
 
     def test_main_merges_with_existing_official_payload(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

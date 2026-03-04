@@ -38,6 +38,13 @@ Beautiful finish and easy setup.
         negative = [item["topic"] for item in summary["negative_topics"]]
         self.assertIn("elegant", positive)
         self.assertIn("unstable", negative)
+        self.assertAlmostEqual(summary["avg_rating"], 3.0)
+        self.assertEqual(summary["rating_distribution"]["5"], 1)
+        self.assertEqual(summary["rating_distribution"]["1"], 1)
+        self.assertEqual(summary["sentiment"]["positive"], 2)
+        self.assertEqual(summary["sentiment"]["negative"], 2)
+        self.assertTrue(summary["positive_snippets"])
+        self.assertTrue(summary["negative_snippets"])
 
 
 if __name__ == "__main__":

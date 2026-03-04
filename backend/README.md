@@ -142,7 +142,11 @@ Behavior:
 
 - Read top ASINs from `app/web/data/daily/<date>.json` (or override via `--asins`)
 - Fetch review pages and parse rating + text
-- Build positive/negative topic mentions
+- Build positive/negative topic mentions + richer review stats:
+  - `avg_rating`
+  - `rating_distribution`
+  - `sentiment` (positive/neutral/negative)
+  - `positive_snippets` / `negative_snippets`
 - Write/merge into `app/web/data/insights/<date>.json`
 
 Source label in output:

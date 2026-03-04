@@ -180,8 +180,14 @@ def main(argv: list[str] | None = None) -> int:
             {
                 "asin": asin,
                 "sample_reviews": int(summary["sample_reviews"]),
+                "total_reviews": int(summary.get("total_reviews") or summary["sample_reviews"]),
+                "avg_rating": summary.get("avg_rating"),
+                "rating_distribution": summary.get("rating_distribution") or {},
+                "sentiment": summary.get("sentiment") or {},
                 "positive_topics": summary["positive_topics"],
                 "negative_topics": summary["negative_topics"],
+                "positive_snippets": summary.get("positive_snippets") or [],
+                "negative_snippets": summary.get("negative_snippets") or [],
             }
         )
 

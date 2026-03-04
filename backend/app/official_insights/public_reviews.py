@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import math
 import html
 import re
 from typing import Any
@@ -162,6 +163,24 @@ def _counter_to_topics(counter: Counter[str], *, top_n: int, min_mentions: int) 
     return topics
 
 
+def _rating_bucket(rating: float | None) -> str | None:
+    if rating is None:
+        return None
+    bucket = int(math.floor(float(rating) + 0.5))
+    if bucket < 1:
+        bucket = 1
+    if bucket > 5:
+        bucket = 5
+    return str(bucket)
+
+
+def _clip_snippet(text: str, limit: int = 160) -> str:
+    cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[: max(20, limit - 1)].rstrip() + "…"
+
+
 def build_review_topic_summary(
     entries: list[dict[str, Any]],
     *,
@@ -171,6 +190,12 @@ def build_review_topic_summary(
     positive = Counter()
     negative = Counter()
     sample_reviews = 0
+    rating_distribution = {str(idx): 0 for idx in range(1, 6)}
+    rating_sum = 0.0
+    rated_count = 0
+    sentiment = {"positive": 0, "negative": 0, "neutral": 0}
+    positive_snippets: list[str] = []
+    negative_snippets: list[str] = []
 
     for entry in entries:
         if not isinstance(entry, dict):
@@ -188,13 +213,37 @@ def build_review_topic_summary(
             continue
 
         sample_reviews += 1
+        bucket = _rating_bucket(rating)
+        if bucket:
+            rating_distribution[bucket] += 1
+            rating_sum += float(rating or 0.0)
+            rated_count += 1
+
         if rating is not None and rating >= 4.0:
             positive.update(tokens)
+            sentiment["positive"] += 1
+            snippet = _clip_snippet(text)
+            if snippet and snippet not in positive_snippets and len(positive_snippets) < 3:
+                positive_snippets.append(snippet)
         elif rating is not None and rating <= 2.0:
             negative.update(tokens)
+            sentiment["negative"] += 1
+            snippet = _clip_snippet(text)
+            if snippet and snippet not in negative_snippets and len(negative_snippets) < 3:
+                negative_snippets.append(snippet)
+        else:
+            sentiment["neutral"] += 1
+
+    avg_rating = round(rating_sum / rated_count, 2) if rated_count > 0 else None
 
     return {
         "sample_reviews": sample_reviews,
+        "total_reviews": sample_reviews,
+        "avg_rating": avg_rating,
+        "rating_distribution": rating_distribution,
+        "sentiment": sentiment,
         "positive_topics": _counter_to_topics(positive, top_n=top_n, min_mentions=min_mentions),
         "negative_topics": _counter_to_topics(negative, top_n=top_n, min_mentions=min_mentions),
+        "positive_snippets": positive_snippets,
+        "negative_snippets": negative_snippets,
     }
