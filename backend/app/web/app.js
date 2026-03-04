@@ -124,6 +124,7 @@ function updateProductFocus() {
 
   const selectedAsin = normalizeSelectedAsin(getInputValue("analysisAsin", ""), filteredItems);
   if (!selectedAsin) {
+    updateProductBackLink(null);
     container.textContent = "未找到可分析的 ASIN，请调整筛选条件。";
     return;
   }
@@ -132,9 +133,12 @@ function updateProductFocus() {
     (item) => String(item.asin || "").trim() === String(selectedAsin || "").trim(),
   );
   if (!selectedItem) {
+    updateProductBackLink(null);
     container.textContent = `当前样本中未命中 ASIN ${selectedAsin}，请检查筛选条件。`;
     return;
   }
+
+  updateProductBackLink(selectedItem);
 
   const detailUrl = selectedItem.detail_url ? String(selectedItem.detail_url) : "";
   const parts = [
@@ -162,6 +166,61 @@ function updateProductFocus() {
     link.className = "inline-link";
     link.textContent = "打开 Amazon 商品详情";
     container.appendChild(link);
+  }
+}
+
+function buildCategoryListHref(item) {
+  const filters = currentFilters();
+  const params = new URLSearchParams();
+  const snapshotDate = getInputValue("snapshot_date", "");
+  const site = String(item?.site || filters.site || "").trim();
+  const board = String(item?.board_type || filters.boardType || "").trim();
+  const category = String(item?.category_key || filters.categoryKey || "").trim();
+
+  if (snapshotDate) params.set("date", snapshotDate);
+  if (site) params.set("site", site);
+  if (board) params.set("board", board);
+  if (category) params.set("category", category);
+  if (filters.topN) params.set("top_n", String(filters.topN));
+  if (filters.hasPrice) params.set("has_price", String(filters.hasPrice));
+  if (filters.sortBy) params.set("sort_by", String(filters.sortBy));
+  if (filters.sortOrder) params.set("sort_order", String(filters.sortOrder));
+
+  const query = params.toString();
+  return query ? `./index.html?${query}` : "./index.html";
+}
+
+function buildInsightsPageHref(item) {
+  const filters = currentFilters();
+  const params = new URLSearchParams();
+  const snapshotDate = getInputValue("snapshot_date", "");
+  const site = String(item?.site || filters.site || "").trim();
+  const board = String(item?.board_type || filters.boardType || "").trim();
+  const category = String(item?.category_key || filters.categoryKey || "").trim();
+  const asin = String(item?.asin || "").trim();
+
+  if (snapshotDate) params.set("date", snapshotDate);
+  if (site) params.set("site", site);
+  if (board) params.set("board", board);
+  if (category) params.set("category", category);
+  if (asin) params.set("asin", asin);
+  if (filters.topN) params.set("top_n", String(filters.topN));
+  if (filters.hasPrice) params.set("has_price", String(filters.hasPrice));
+  if (filters.sortBy) params.set("sort_by", String(filters.sortBy));
+  if (filters.sortOrder) params.set("sort_order", String(filters.sortOrder));
+  const query = params.toString();
+  return query ? `./insights.html?${query}` : "./insights.html";
+}
+
+function updateProductBackLink(item) {
+  const backLink = document.getElementById("backToCategoryList");
+  if (backLink) {
+    backLink.href = buildCategoryListHref(item);
+  }
+
+  const insightsLink = document.getElementById("openInInsightsPage");
+  if (insightsLink) {
+    insightsLink.href = buildInsightsPageHref(item);
   }
 }
 
@@ -634,23 +693,134 @@ function buildKeywordInsightRows(items) {
   return { trafficRows, conversionRows };
 }
 
+function renderMonthlySalesKpiCards(rows) {
+  const container = document.getElementById("monthlySalesKpiCards");
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!Array.isArray(rows) || !rows.length) {
+    return;
+  }
+
+  const sorted = [...rows].sort((left, right) => sortMonthAsc(left.month, right.month));
+  const bySales = [...sorted].sort(
+    (left, right) => (parseNumber(right.monthSales) || 0) - (parseNumber(left.monthSales) || 0),
+  );
+
+  const totalSales = sorted.reduce((acc, row) => acc + (parseNumber(row.monthSales) || 0), 0);
+  const avgSales = sorted.length ? totalSales / sorted.length : 0;
+  const firstSales = parseNumber(sorted[0]?.monthSales) || 0;
+  const lastSales = parseNumber(sorted[sorted.length - 1]?.monthSales) || 0;
+  const trendDelta = firstSales > 0 ? ((lastSales - firstSales) / firstSales) * 100 : null;
+  const peakRow = bySales[0];
+
+  const kpis = [
+    { label: "近12个月总销量", value: formatCompactNumber(Math.round(totalSales)) },
+    { label: "月均销量", value: formatCompactNumber(Math.round(avgSales)) },
+    {
+      label: "峰值月份",
+      value: peakRow ? `${peakRow.month} (${formatCompactNumber(peakRow.monthSales)})` : "-",
+    },
+    {
+      label: "首末月变化",
+      value:
+        trendDelta === null
+          ? "-"
+          : `${trendDelta >= 0 ? "+" : ""}${trendDelta.toFixed(1)}%`,
+    },
+  ];
+
+  const grid = document.createElement("div");
+  grid.className = "kpi-grid";
+  kpis.forEach((kpi) => {
+    const card = document.createElement("div");
+    card.className = "kpi-card";
+
+    const label = document.createElement("span");
+    label.className = "kpi-label";
+    label.textContent = kpi.label;
+
+    const value = document.createElement("strong");
+    value.className = "kpi-value";
+    value.textContent = kpi.value;
+
+    card.appendChild(label);
+    card.appendChild(value);
+    grid.appendChild(card);
+  });
+  container.appendChild(grid);
+}
+
+function renderMonthlySalesTrendChart(rows) {
+  const container = document.getElementById("monthlySalesTrendChart");
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!Array.isArray(rows) || !rows.length) {
+    container.textContent = "近一年暂无月销量趋势图。";
+    return;
+  }
+
+  const sorted = [...rows].sort((left, right) => sortMonthAsc(left.month, right.month));
+  const maxSales = Math.max(...sorted.map((row) => parseNumber(row.monthSales) || 0), 1);
+
+  const chart = document.createElement("div");
+  chart.className = "month-trend-chart";
+  sorted.forEach((row) => {
+    const sales = parseNumber(row.monthSales) || 0;
+    const line = document.createElement("div");
+    line.className = "month-trend-row";
+
+    const month = document.createElement("span");
+    month.className = "month-trend-month";
+    month.textContent = row.month || "-";
+
+    const track = document.createElement("div");
+    track.className = "month-trend-track";
+    const fill = document.createElement("div");
+    fill.className = "month-trend-fill";
+    fill.style.width = `${Math.max(4, Math.round((sales / maxSales) * 100))}%`;
+    track.appendChild(fill);
+
+    const value = document.createElement("span");
+    value.className = "month-trend-value";
+    value.textContent = formatCompactNumber(sales);
+
+    line.appendChild(month);
+    line.appendChild(track);
+    line.appendChild(value);
+    chart.appendChild(line);
+  });
+
+  container.appendChild(chart);
+}
+
 function renderMonthlySalesInsights(rows, asin) {
   const container = document.getElementById("monthlySalesInsights");
   if (!container) return;
   container.innerHTML = "";
 
   if (!Array.isArray(rows)) {
+    renderMonthlySalesKpiCards(null);
+    renderMonthlySalesTrendChart(null);
     return;
   }
 
   if (!asin) {
+    renderMonthlySalesKpiCards(null);
+    renderMonthlySalesTrendChart(null);
     container.textContent = "当前没有可分析的 ASIN。";
     return;
   }
   if (!rows.length) {
+    renderMonthlySalesKpiCards([]);
+    renderMonthlySalesTrendChart([]);
     container.textContent = "近一年暂无该商品的月度样本。";
     return;
   }
+
+  renderMonthlySalesKpiCards(rows);
+  renderMonthlySalesTrendChart(rows);
 
   const title = document.createElement("p");
   title.className = "muted";

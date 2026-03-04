@@ -83,6 +83,10 @@
 
       <section class="card">
         <h2>当前单品</h2>
+        <div class="row">
+          <a id="backToCategoryList" class="action-link" href="./index.html">返回同类目竞品列表</a>
+          <a id="openInInsightsPage" href="./insights.html">在竞品洞察页查看</a>
+        </div>
         <div id="productFocus" class="insight-content">等待加载单品信息...</div>
       </section>
 
@@ -112,6 +116,8 @@
           </article>
           <article class="insight-panel">
             <h3>3. 各月份销量（明细）</h3>
+            <div id="monthlySalesKpiCards" class="insight-content"></div>
+            <div id="monthlySalesTrendChart" class="insight-content"></div>
             <div id="monthlySalesInsights" class="insight-content"></div>
             <div class="insight-actions">
               <button id="downloadMonthlySalesCsv" type="button">导出月销量明细 CSV</button>
