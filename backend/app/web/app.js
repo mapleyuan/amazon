@@ -517,7 +517,7 @@ function buildReviewDetailFromItems(items, asin) {
     negativeTopics,
     positiveSnippets,
     negativeSnippets,
-    sourceLabel: "估算商品评分",
+    sourceLabel: "估算（未抓到评论明细，基于商品标题与评分）",
   };
 }
 
@@ -715,6 +715,14 @@ function renderReviewTopicDetail(detail) {
   if (!detail) {
     container.textContent = "暂无评论主题与摘录明细。";
     return;
+  }
+
+  const isEstimated = String(detail.sourceLabel || "").includes("估算");
+  if (isEstimated) {
+    const warning = document.createElement("p");
+    warning.className = "status-warning";
+    warning.textContent = "当前未抓到真实评论明细，以下主题与摘录来自估算信号，不是买家评论原文。";
+    container.appendChild(warning);
   }
 
   const source = document.createElement("p");
