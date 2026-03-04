@@ -30,6 +30,11 @@ def _parse_args(argv: list[str] | None) -> Namespace:
     parser.add_argument("--top-n-topics", type=int, default=8)
     parser.add_argument("--min-topic-mentions", type=int, default=2)
     parser.add_argument("--strict", action="store_true", help="Exit non-zero when no review topics can be generated")
+    parser.add_argument(
+        "--strict-review-topics",
+        action="store_true",
+        help="Exit non-zero when final review_topic_asins is 0 (hard check)",
+    )
     parser.add_argument("--insights-output-dir", default=str(WEB_DATA_DIR / "insights"))
     return parser.parse_args(argv)
 
@@ -104,19 +109,43 @@ def _review_page_url(site: str, asin: str, page_number: int) -> str:
     )
 
 
-def _collect_review_entries_for_asin(site: str, asin: str, pages_per_asin: int) -> list[dict[str, Any]]:
+def _collect_review_entries_for_asin(site: str, asin: str, pages_per_asin: int) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    pages_attempted = 0
+    pages_succeeded = 0
+    errors: list[str] = []
+    page_stats: list[dict[str, Any]] = []
+
     for page in range(1, max(1, pages_per_asin) + 1):
+        pages_attempted += 1
         url = _review_page_url(site, asin, page)
         try:
             text = fetch_html(url, site=site, timeout=20, max_bytes=800_000)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"page={page}: {type(exc).__name__}: {exc}")
+            page_stats.append({"page": page, "parsed_entries": 0, "error": f"{type(exc).__name__}: {exc}"})
             continue
+
         parsed = parse_review_entries(text)
+        pages_succeeded += 1
+        page_stats.append({"page": page, "parsed_entries": len(parsed), "error": None})
         if not parsed and page > 1:
             break
         rows.extend(parsed)
-    return rows
+
+    diagnostics = {
+        "asin": asin,
+        "site": site,
+        "pages_attempted": pages_attempted,
+        "pages_succeeded": pages_succeeded,
+        "entries_parsed": len(rows),
+        "status": "ok" if rows else "failed",
+        "errors": errors,
+        "pages": page_stats,
+    }
+    if not rows and not errors:
+        diagnostics["errors"] = ["no review entries parsed"]
+    return rows, diagnostics
 
 
 def _load_json(path: Path) -> dict[str, Any] | None:
@@ -161,10 +190,22 @@ def main(argv: list[str] | None = None) -> int:
     existing_monthly_sales = existing.get("monthly_sales") if isinstance(existing.get("monthly_sales"), list) else []
     existing_style_trends = existing.get("style_trends") if isinstance(existing.get("style_trends"), list) else []
     existing_review_topics = existing.get("review_topics") if isinstance(existing.get("review_topics"), list) else []
+    existing_diagnostics = (
+        existing.get("review_fetch_diagnostics") if isinstance(existing.get("review_fetch_diagnostics"), list) else []
+    )
 
     review_topics: list[dict[str, Any]] = []
+    review_fetch_diagnostics: list[dict[str, Any]] = []
     for asin in asins:
-        entries = _collect_review_entries_for_asin(args.site, asin, int(args.pages_per_asin))
+        entries, diagnostics = _collect_review_entries_for_asin(args.site, asin, int(args.pages_per_asin))
+        review_fetch_diagnostics.append(diagnostics)
+        print(
+            f"[review-fetch] asin={asin} status={diagnostics.get('status')} "
+            f"entries={diagnostics.get('entries_parsed')} pages_ok={diagnostics.get('pages_succeeded')}/{diagnostics.get('pages_attempted')}"
+        )
+        if diagnostics.get("errors"):
+            print(f"[review-fetch] asin={asin} errors={diagnostics.get('errors')}")
+
         if not entries:
             continue
 
@@ -174,8 +215,11 @@ def main(argv: list[str] | None = None) -> int:
             min_mentions=max(1, int(args.min_topic_mentions)),
         )
         if summary["sample_reviews"] <= 0:
+            diagnostics["status"] = "failed"
+            diagnostics.setdefault("errors", []).append("parsed entries but sample_reviews=0 after cleanup")
             continue
 
+        diagnostics["sample_reviews"] = int(summary["sample_reviews"])
         review_topics.append(
             {
                 "asin": asin,
@@ -193,10 +237,10 @@ def main(argv: list[str] | None = None) -> int:
 
     has_new_reviews = bool(review_topics)
     final_review_topics = review_topics if has_new_reviews else existing_review_topics
+    final_diagnostics = review_fetch_diagnostics if review_fetch_diagnostics else existing_diagnostics
+    failed_asins = sum(1 for item in final_diagnostics if str(item.get("status") or "") != "ok")
 
     total_rows = len(existing_keywords) + len(existing_monthly_sales) + len(existing_style_trends) + len(final_review_topics)
-    if total_rows == 0:
-        return 1 if args.strict else 0
 
     payload = build_official_insights_payload(
         snapshot_date=snapshot_date,
@@ -207,8 +251,15 @@ def main(argv: list[str] | None = None) -> int:
         style_trends=existing_style_trends,
     )
     payload["source"] = _merge_source(str(existing.get("source") or ""), has_new_reviews)
+    payload["review_fetch_diagnostics"] = final_diagnostics
+    payload["stats"]["review_topic_failed_asins"] = int(failed_asins)
 
     _write_json(output_path, payload)
+
+    if args.strict and total_rows == 0:
+        return 1
+    if args.strict_review_topics and len(final_review_topics) <= 0:
+        return 1
     return 0
 
 

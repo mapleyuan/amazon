@@ -104,7 +104,8 @@ jobs:
             --snapshot-date "$(date -u +%F)" \
             --site amazon.com \
             --asin-limit 8 \
-            --pages-per-asin 2
+            --pages-per-asin 2 \
+            --strict-review-topics
 
       - name: Build public keyword insights (free fallback)
         run: |

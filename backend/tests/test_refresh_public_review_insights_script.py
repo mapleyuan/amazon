@@ -59,6 +59,7 @@ Arrived bent and unstable after one week.
             payload = json.loads((insights_dir / "2026-03-03.json").read_text(encoding="utf-8"))
             self.assertEqual(payload["source"], "public_reviews")
             self.assertEqual(payload["stats"]["review_topic_asins"], 1)
+            self.assertEqual(payload["stats"]["review_topic_failed_asins"], 0)
             self.assertEqual(len(payload["review_topics"]), 1)
             self.assertGreaterEqual(payload["review_topics"][0]["sample_reviews"], 2)
             self.assertIn("avg_rating", payload["review_topics"][0])
@@ -66,6 +67,10 @@ Arrived bent and unstable after one week.
             self.assertIn("sentiment", payload["review_topics"][0])
             self.assertIn("positive_snippets", payload["review_topics"][0])
             self.assertIn("negative_snippets", payload["review_topics"][0])
+            self.assertIn("review_fetch_diagnostics", payload)
+            self.assertEqual(len(payload["review_fetch_diagnostics"]), 1)
+            self.assertEqual(payload["review_fetch_diagnostics"][0]["asin"], "B000000001")
+            self.assertEqual(payload["review_fetch_diagnostics"][0]["status"], "ok")
 
     def test_main_merges_with_existing_official_payload(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -127,6 +132,65 @@ Broke quickly.
             self.assertEqual(payload["source"], "mixed_reports_public_reviews")
             self.assertEqual(payload["stats"]["keyword_rows"], 1)
             self.assertEqual(payload["stats"]["review_topic_asins"], 1)
+            self.assertEqual(payload["stats"]["review_topic_failed_asins"], 0)
+
+    def test_main_strict_review_topics_fails_with_diagnostics_when_no_reviews(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            web_data = base / "web-data"
+            daily_dir = web_data / "daily"
+            insights_dir = web_data / "insights"
+            daily_dir.mkdir(parents=True, exist_ok=True)
+            insights_dir.mkdir(parents=True, exist_ok=True)
+
+            (daily_dir / "2026-03-03.json").write_text(
+                json.dumps({"snapshot_date": "2026-03-03", "items": [{"asin": "B000000001", "rank": 1}]}),
+                encoding="utf-8",
+            )
+            (insights_dir / "2026-03-03.json").write_text(
+                json.dumps(
+                    {
+                        "snapshot_date": "2026-03-03",
+                        "source": "public_search_keywords",
+                        "keywords": [{"keyword": "candlestick", "impressions": 100}],
+                        "monthly_sales": [],
+                        "review_topics": [],
+                        "style_trends": [],
+                        "stats": {
+                            "keyword_rows": 1,
+                            "monthly_sales_rows": 0,
+                            "review_topic_asins": 0,
+                            "style_trend_rows": 0,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch.object(refresh_public_review_insights, "WEB_DATA_DIR", web_data):
+                with patch.object(refresh_public_review_insights, "fetch_html", side_effect=RuntimeError("network down")):
+                    code = refresh_public_review_insights.main(
+                        [
+                            "--snapshot-date",
+                            "2026-03-03",
+                            "--asin-limit",
+                            "1",
+                            "--pages-per-asin",
+                            "2",
+                            "--strict-review-topics",
+                            "--insights-output-dir",
+                            str(insights_dir),
+                        ]
+                    )
+
+            self.assertEqual(code, 1)
+            payload = json.loads((insights_dir / "2026-03-03.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["stats"]["review_topic_asins"], 0)
+            self.assertEqual(payload["stats"]["review_topic_failed_asins"], 1)
+            self.assertEqual(len(payload["review_fetch_diagnostics"]), 1)
+            self.assertEqual(payload["review_fetch_diagnostics"][0]["asin"], "B000000001")
+            self.assertEqual(payload["review_fetch_diagnostics"][0]["status"], "failed")
+            self.assertGreaterEqual(len(payload["review_fetch_diagnostics"][0]["errors"]), 1)
 
 
 if __name__ == "__main__":

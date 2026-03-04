@@ -64,6 +64,9 @@ python3 scripts/refresh_public_review_insights.py --snapshot-date 2026-03-03 --s
 
 - `backend/app/web/data/insights/YYYY-MM-DD.json`（`source=public_reviews`）
 - 包含更多评论字段：`avg_rating`、`rating_distribution`、`sentiment`、`positive_snippets`、`negative_snippets`
+- 包含抓取诊断字段：`review_fetch_diagnostics`（每个 ASIN 的抓取页数、错误原因、解析结果）
+
+工作流默认启用 `--strict-review-topics`：若当日 `review_topic_asins=0`，任务直接失败并告警，避免误以为评论明细已抓取成功。
 
 另外，免费关键词流量/转化近似可用：
 

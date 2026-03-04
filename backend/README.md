@@ -156,7 +156,17 @@ Behavior:
   - `rating_distribution`
   - `sentiment` (positive/neutral/negative)
   - `positive_snippets` / `negative_snippets`
+- Build per-ASIN diagnostics:
+  - `review_fetch_diagnostics` (pages attempted/succeeded, parsed entries, per-page errors)
 - Write/merge into `app/web/data/insights/<date>.json`
+
+Strict review-topic gate:
+
+```bash
+python3 scripts/refresh_public_review_insights.py --snapshot-date 2026-03-03 --strict-review-topics
+```
+
+When `review_topic_asins` is `0`, script exits non-zero for CI alerting.
 
 Source label in output:
 
