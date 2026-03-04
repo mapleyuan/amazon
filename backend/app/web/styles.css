@@ -449,6 +449,36 @@ td {
   margin-bottom: 6px;
 }
 
+.review-detail-grid {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.review-detail-card {
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+}
+
+.review-detail-card h5 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: #0f172a;
+}
+
+.review-detail-snippets {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.review-detail-snippets li {
+  margin-bottom: 6px;
+  line-height: 1.55;
+}
+
 .insight-list {
   margin: 0;
   padding-left: 18px;
@@ -499,6 +529,10 @@ td {
   }
 
   .keyword-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .review-detail-grid {
     grid-template-columns: 1fr;
   }
 

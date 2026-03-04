@@ -603,6 +603,7 @@ function renderReviewDeepDive(detail) {
 
   if (!detail) {
     ratingContainer.textContent = "暂无单品评论结构数据。";
+    renderReviewTopicDetail(null);
     return;
   }
 
@@ -622,19 +623,14 @@ function renderReviewDeepDive(detail) {
   const lines = [];
   const avgRating = parseNumber(detail.avgRating);
   if (avgRating !== null) {
-    lines.push(`平均评分: ${avgRating.toFixed(2)}（样本 ${detail.sampleReviews || 0}）`);
+    lines.push(`平均评分: ${avgRating.toFixed(2)}（样本 ${detail.sampleReviews || 0}，来源 ${detail.sourceLabel || "估算"}）`);
   } else {
-    lines.push(`样本量: ${detail.sampleReviews || 0}`);
-  }
-  if (detail.positiveSnippets?.length) {
-    lines.push(`好评摘录: ${detail.positiveSnippets.join(" | ")}`);
-  }
-  if (detail.negativeSnippets?.length) {
-    lines.push(`差评摘录: ${detail.negativeSnippets.join(" | ")}`);
+    lines.push(`样本量: ${detail.sampleReviews || 0}（来源 ${detail.sourceLabel || "估算"}）`);
   }
 
   if (!lines.length) {
     snippetContainer.textContent = "暂无评论摘录。";
+    renderReviewTopicDetail(detail);
     return;
   }
   const ul = document.createElement("ul");
@@ -645,10 +641,106 @@ function renderReviewDeepDive(detail) {
     ul.appendChild(li);
   });
   snippetContainer.appendChild(ul);
+  renderReviewTopicDetail(detail);
+}
+
+function _renderReviewTopicTable(title, topics, emptyText) {
+  const card = document.createElement("div");
+  card.className = "review-detail-card";
+
+  const heading = document.createElement("h5");
+  heading.textContent = title;
+  card.appendChild(heading);
+
+  if (!Array.isArray(topics) || !topics.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = emptyText;
+    card.appendChild(empty);
+    return card;
+  }
+
+  const table = document.createElement("table");
+  table.className = "mini-table";
+  table.innerHTML = "<thead><tr><th>主题词</th><th>提及数</th><th>分值</th></tr></thead>";
+  const tbody = document.createElement("tbody");
+  topics.slice(0, 12).forEach((topic) => {
+    const mentions = parseNumber(topic.mentions);
+    const score = parseNumber(topic.score);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${String(topic.topic || "-")}</td>
+      <td>${mentions === null ? "-" : mentions}</td>
+      <td>${score === null ? "-" : score.toFixed(2)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  card.appendChild(table);
+  return card;
+}
+
+function _renderReviewSnippetBlock(title, snippets, emptyText) {
+  const card = document.createElement("div");
+  card.className = "review-detail-card";
+
+  const heading = document.createElement("h5");
+  heading.textContent = title;
+  card.appendChild(heading);
+
+  if (!Array.isArray(snippets) || !snippets.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = emptyText;
+    card.appendChild(empty);
+    return card;
+  }
+
+  const list = document.createElement("ol");
+  list.className = "review-detail-snippets";
+  snippets.slice(0, 10).forEach((snippet) => {
+    const li = document.createElement("li");
+    li.textContent = String(snippet || "").trim() || "-";
+    list.appendChild(li);
+  });
+  card.appendChild(list);
+  return card;
+}
+
+function renderReviewTopicDetail(detail) {
+  const container = document.getElementById("reviewTopicDetail");
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!detail) {
+    container.textContent = "暂无评论主题与摘录明细。";
+    return;
+  }
+
+  const source = document.createElement("p");
+  source.className = "muted";
+  source.textContent = `评论明细来源: ${detail.sourceLabel || "估算"}，样本量: ${detail.sampleReviews || 0}`;
+  container.appendChild(source);
+
+  const grid = document.createElement("div");
+  grid.className = "review-detail-grid";
+  grid.appendChild(
+    _renderReviewTopicTable("好评主题明细", detail.positiveTopics, "暂无好评主题词。"),
+  );
+  grid.appendChild(
+    _renderReviewTopicTable("差评痛点明细", detail.negativeTopics, "暂无差评主题词。"),
+  );
+  grid.appendChild(
+    _renderReviewSnippetBlock("好评摘录明细", detail.positiveSnippets, "暂无好评摘录。"),
+  );
+  grid.appendChild(
+    _renderReviewSnippetBlock("差评摘录明细", detail.negativeSnippets, "暂无差评摘录。"),
+  );
+  container.appendChild(grid);
 }
 
 function clearReviewDeepDive() {
-  ["reviewRatingChart", "reviewSentimentChart", "reviewSnippetList"].forEach((id) => {
+  ["reviewRatingChart", "reviewSentimentChart", "reviewSnippetList", "reviewTopicDetail"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.innerHTML = "";
   });
