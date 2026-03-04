@@ -190,7 +190,105 @@ Broke quickly.
             self.assertEqual(len(payload["review_fetch_diagnostics"]), 1)
             self.assertEqual(payload["review_fetch_diagnostics"][0]["asin"], "B000000001")
             self.assertEqual(payload["review_fetch_diagnostics"][0]["status"], "failed")
+            self.assertEqual(payload["review_fetch_diagnostics"][0]["failure_reason"], "network_error")
             self.assertGreaterEqual(len(payload["review_fetch_diagnostics"][0]["errors"]), 1)
+
+    def test_main_falls_back_to_direct_source_when_primary_blocked(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            web_data = base / "web-data"
+            daily_dir = web_data / "daily"
+            insights_dir = web_data / "insights"
+            daily_dir.mkdir(parents=True, exist_ok=True)
+            insights_dir.mkdir(parents=True, exist_ok=True)
+
+            (daily_dir / "2026-03-03.json").write_text(
+                json.dumps({"snapshot_date": "2026-03-03", "items": [{"asin": "B000000001", "rank": 1}]}),
+                encoding="utf-8",
+            )
+
+            blocked_text = """
+Sorry, we just need to make sure you're not a robot.
+To discuss automated access to Amazon data please contact api-services-support@amazon.com.
+"""
+            direct_ok_text = """
+1. [5.0 out of 5 stars](https://www.amazon.com/gp/customer-reviews/R1) Great quality
+Sturdy and elegant.
+"""
+
+            def _fake_fetch(url: str, **kwargs: object) -> str:
+                source = str(refresh_public_review_insights.os.environ.get("AMAZON_CRAWL_SOURCE") or "")
+                if source == "jina_ai":
+                    return blocked_text
+                return direct_ok_text
+
+            with patch.object(refresh_public_review_insights, "WEB_DATA_DIR", web_data):
+                with patch.dict(refresh_public_review_insights.os.environ, {"AMAZON_CRAWL_SOURCE": "jina_ai"}, clear=False):
+                    with patch.object(refresh_public_review_insights, "fetch_html", side_effect=_fake_fetch):
+                        code = refresh_public_review_insights.main(
+                            [
+                                "--snapshot-date",
+                                "2026-03-03",
+                                "--asin-limit",
+                                "1",
+                                "--pages-per-asin",
+                                "1",
+                                "--insights-output-dir",
+                                str(insights_dir),
+                            ]
+                        )
+
+            self.assertEqual(code, 0)
+            payload = json.loads((insights_dir / "2026-03-03.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["stats"]["review_topic_asins"], 1)
+            diagnostics = payload["review_fetch_diagnostics"][0]
+            self.assertEqual(diagnostics["status"], "ok")
+            self.assertEqual(diagnostics["entries_parsed"], 1)
+            self.assertIn("jina_ai", diagnostics["source_candidates"])
+            self.assertIn("direct", diagnostics["source_candidates"])
+            self.assertEqual(diagnostics["pages"][0]["source"], "direct")
+            self.assertEqual(diagnostics["pages"][0]["sources_tried"][0]["page_issue"], "blocked_page")
+
+    def test_main_reports_blocked_failure_reason(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            web_data = base / "web-data"
+            daily_dir = web_data / "daily"
+            insights_dir = web_data / "insights"
+            daily_dir.mkdir(parents=True, exist_ok=True)
+            insights_dir.mkdir(parents=True, exist_ok=True)
+
+            (daily_dir / "2026-03-03.json").write_text(
+                json.dumps({"snapshot_date": "2026-03-03", "items": [{"asin": "B000000001", "rank": 1}]}),
+                encoding="utf-8",
+            )
+
+            blocked_text = """
+Sorry, we just need to make sure you're not a robot.
+To discuss automated access to Amazon data please contact api-services-support@amazon.com.
+"""
+
+            with patch.object(refresh_public_review_insights, "WEB_DATA_DIR", web_data):
+                with patch.object(refresh_public_review_insights, "fetch_html", return_value=blocked_text):
+                    code = refresh_public_review_insights.main(
+                        [
+                            "--snapshot-date",
+                            "2026-03-03",
+                            "--asin-limit",
+                            "1",
+                            "--pages-per-asin",
+                            "1",
+                            "--strict-review-topics",
+                            "--insights-output-dir",
+                            str(insights_dir),
+                        ]
+                    )
+
+            self.assertEqual(code, 1)
+            payload = json.loads((insights_dir / "2026-03-03.json").read_text(encoding="utf-8"))
+            diagnostics = payload["review_fetch_diagnostics"][0]
+            self.assertEqual(diagnostics["status"], "failed")
+            self.assertEqual(diagnostics["failure_reason"], "blocked_page")
 
 
 if __name__ == "__main__":

@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import unittest
 
-from app.official_insights.public_reviews import build_review_topic_summary, parse_review_entries
+from app.official_insights.public_reviews import (
+    build_review_topic_summary,
+    classify_review_page,
+    parse_review_entries,
+)
 
 
 class PublicReviewInsightsTests(unittest.TestCase):
@@ -45,6 +49,31 @@ Beautiful finish and easy setup.
         self.assertEqual(summary["sentiment"]["negative"], 2)
         self.assertTrue(summary["positive_snippets"])
         self.assertTrue(summary["negative_snippets"])
+
+    def test_parse_review_entries_supports_multiple_rating_formats(self) -> None:
+        markdown = """
+1. ★★★★☆ Elegant and sturdy
+Looks premium and sturdy metal base.
+
+2. [4.5/5](https://www.amazon.com/gp/customer-reviews/R2) Great value
+Worth the money for home decor.
+
+3. Rating: 3.0 out of 5 Fair
+Average finish but acceptable.
+"""
+        rows = parse_review_entries(markdown)
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[0]["rating"], 4.0)
+        self.assertEqual(rows[1]["rating"], 4.5)
+        self.assertEqual(rows[2]["rating"], 3.0)
+
+    def test_classify_review_page_detects_robot_block(self) -> None:
+        blocked = """
+Sorry, we just need to make sure you're not a robot.
+To discuss automated access to Amazon data please contact api-services-support@amazon.com.
+"""
+        self.assertEqual(classify_review_page(blocked), "blocked_page")
+        self.assertIsNone(classify_review_page("normal content with ratings and comments"))
 
 
 if __name__ == "__main__":

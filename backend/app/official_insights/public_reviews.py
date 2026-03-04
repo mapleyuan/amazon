@@ -6,7 +6,22 @@ import html
 import re
 from typing import Any
 
-_STAR_RE = re.compile(r"([1-5](?:\.\d)?)\s*out of\s*5\s*stars", re.IGNORECASE)
+_STAR_PATTERNS = (
+    re.compile(r"([1-5](?:[.,]\d)?)\s*out of\s*5\s*stars?", re.IGNORECASE),
+    re.compile(r"([1-5](?:[.,]\d)?)\s*out of\s*5\b", re.IGNORECASE),
+    re.compile(r"([1-5](?:[.,]\d)?)\s*/\s*5\b", re.IGNORECASE),
+    re.compile(r"([1-5](?:[.,]\d)?)\s*stars?\b", re.IGNORECASE),
+)
+_STAR_GLYPH_RE = re.compile(r"(?:★|⭐){1,5}☆{0,5}")
+_BLOCKED_PATTERNS = (
+    re.compile(r"not\s+a\s+robot", re.IGNORECASE),
+    re.compile(r"robot\s+check", re.IGNORECASE),
+    re.compile(r"automated\s+access\s+to\s+amazon\s+data", re.IGNORECASE),
+    re.compile(r"api-services-support@amazon\.com", re.IGNORECASE),
+    re.compile(r"enter\s+the\s+characters\s+you\s+see\s+below", re.IGNORECASE),
+    re.compile(r"captcha", re.IGNORECASE),
+    re.compile(r"access\s+denied", re.IGNORECASE),
+)
 _LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 _TAG_RE = re.compile(r"<[^>]+>")
 _TOKEN_RE = re.compile(r"[a-z][a-z0-9-]{2,}")
@@ -66,8 +81,46 @@ def _clean_line(raw: str) -> str:
     return text
 
 
+def _extract_rating(line: str) -> tuple[float | None, int]:
+    text = str(line or "")
+
+    for pattern in _STAR_PATTERNS:
+        match = pattern.search(text)
+        if not match:
+            continue
+        raw = str(match.group(1) or "").replace(",", ".")
+        try:
+            rating = float(raw)
+        except ValueError:
+            continue
+        if 1.0 <= rating <= 5.0:
+            return rating, int(match.end())
+
+    glyph_match = _STAR_GLYPH_RE.search(text)
+    if glyph_match:
+        value = glyph_match.group(0)
+        filled = value.count("★") + value.count("⭐")
+        if 1 <= filled <= 5:
+            return float(filled), int(glyph_match.end())
+
+    return None, -1
+
+
+def classify_review_page(text: str) -> str | None:
+    normalized = _clean_line(str(text or ""))
+    if not normalized:
+        return "empty_content"
+
+    for pattern in _BLOCKED_PATTERNS:
+        if pattern.search(normalized):
+            return "blocked_page"
+
+    return None
+
+
 def _is_noise_line(raw: str, cleaned: str) -> bool:
     lower = cleaned.lower()
+    has_rating = _extract_rating(cleaned)[0] is not None
     return (
         not cleaned
         or "global ratings" in lower
@@ -76,7 +129,7 @@ def _is_noise_line(raw: str, cleaned: str) -> bool:
         or lower.startswith("sort by")
         or lower.startswith("filter by")
         or lower.startswith("search reviews")
-        or ("customer reviews" in lower and "out of 5 stars" not in lower)
+        or ("customer reviews" in lower and not has_rating)
         or ("/customer-reviews/" not in raw and "out of 5 stars" in lower and len(cleaned) < 14)
     )
 
@@ -94,18 +147,12 @@ def parse_review_entries(text: str) -> list[dict[str, Any]]:
             idx += 1
             continue
 
-        star_match = _STAR_RE.search(line)
-        if not star_match:
+        rating, rating_end = _extract_rating(line)
+        if rating is None:
             idx += 1
             continue
 
-        try:
-            rating = float(star_match.group(1))
-        except ValueError:
-            idx += 1
-            continue
-
-        title = line[star_match.end() :].strip(" -:|.")
+        title = line[rating_end:].strip(" -:|.")
         text_parts: list[str] = [title] if title else []
 
         next_idx = idx + 1
@@ -117,7 +164,7 @@ def parse_review_entries(text: str) -> list[dict[str, Any]]:
                     break
                 next_idx += 1
                 continue
-            if _STAR_RE.search(next_line):
+            if _extract_rating(next_line)[0] is not None:
                 break
             text_parts.append(next_line)
             # Keep parser bounded when upstream returns long markdown pages.

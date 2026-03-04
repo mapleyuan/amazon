@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from argparse import ArgumentParser, Namespace
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -15,7 +17,11 @@ if str(PROJECT_ROOT) not in sys.path:
 from app.crawler.adapters import SITE_BASE  # noqa: E402
 from app.crawler.client import fetch_html  # noqa: E402
 from app.official_insights.builder import build_official_insights_payload, utc_now_iso  # noqa: E402
-from app.official_insights.public_reviews import build_review_topic_summary, parse_review_entries  # noqa: E402
+from app.official_insights.public_reviews import (  # noqa: E402
+    build_review_topic_summary,
+    classify_review_page,
+    parse_review_entries,
+)
 
 WEB_DATA_DIR = PROJECT_ROOT / "app" / "web" / "data"
 
@@ -109,42 +115,189 @@ def _review_page_url(site: str, asin: str, page_number: int) -> str:
     )
 
 
+def _review_source_candidates() -> list[str]:
+    primary = str(os.environ.get("AMAZON_CRAWL_SOURCE", "direct") or "direct").strip().lower() or "direct"
+    candidates: list[str] = [primary]
+
+    if primary == "jina_ai":
+        candidates.append("direct")
+    elif primary == "direct":
+        candidates.append("jina_ai")
+    else:
+        candidates.append("direct")
+
+    deduped: list[str] = []
+    for source in candidates:
+        if source and source not in deduped:
+            deduped.append(source)
+    return deduped
+
+
+@contextmanager
+def _temporary_crawl_source(source: str):
+    key = "AMAZON_CRAWL_SOURCE"
+    had_key = key in os.environ
+    previous = os.environ.get(key)
+    os.environ[key] = str(source or "").strip()
+    try:
+        yield
+    finally:
+        if had_key:
+            if previous is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = previous
+        else:
+            os.environ.pop(key, None)
+
+
+def _classify_failure_reason(
+    *,
+    has_rows: bool,
+    blocked_pages: int,
+    pages_succeeded: int,
+    network_errors: int,
+) -> str | None:
+    if has_rows:
+        return None
+    if blocked_pages > 0:
+        return "blocked_page"
+    if pages_succeeded <= 0 and network_errors > 0:
+        return "network_error"
+    if pages_succeeded > 0:
+        return "parsed_zero"
+    if network_errors > 0:
+        return "network_error"
+    return "unknown_error"
+
+
 def _collect_review_entries_for_asin(site: str, asin: str, pages_per_asin: int) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     pages_attempted = 0
     pages_succeeded = 0
+    blocked_pages = 0
+    network_errors = 0
     errors: list[str] = []
     page_stats: list[dict[str, Any]] = []
+    source_candidates = _review_source_candidates()
 
     for page in range(1, max(1, pages_per_asin) + 1):
         pages_attempted += 1
         url = _review_page_url(site, asin, page)
-        try:
-            text = fetch_html(url, site=site, timeout=20, max_bytes=800_000)
-        except Exception as exc:  # noqa: BLE001
-            errors.append(f"page={page}: {type(exc).__name__}: {exc}")
-            page_stats.append({"page": page, "parsed_entries": 0, "error": f"{type(exc).__name__}: {exc}"})
+        page_parsed: list[dict[str, Any]] = []
+        page_fetch_ok = False
+        chosen_source = ""
+        source_attempts: list[dict[str, Any]] = []
+
+        for source in source_candidates:
+            attempt: dict[str, Any] = {
+                "source": source,
+                "parsed_entries": 0,
+                "error": None,
+                "page_issue": None,
+            }
+            try:
+                with _temporary_crawl_source(source):
+                    text = fetch_html(url, site=site, timeout=20, max_bytes=800_000)
+                page_fetch_ok = True
+            except Exception as exc:  # noqa: BLE001
+                error_text = f"{type(exc).__name__}: {exc}"
+                attempt["error"] = error_text
+                attempt["page_issue"] = "network_error"
+                source_attempts.append(attempt)
+                errors.append(f"page={page} source={source}: {error_text}")
+                network_errors += 1
+                continue
+
+            parsed = parse_review_entries(text)
+            attempt["parsed_entries"] = len(parsed)
+            if parsed:
+                chosen_source = source
+                page_parsed = parsed
+                source_attempts.append(attempt)
+                break
+
+            page_issue = classify_review_page(text) or "parsed_zero"
+            attempt["page_issue"] = page_issue
+            if page_issue == "blocked_page":
+                blocked_pages += 1
+            source_attempts.append(attempt)
+
+        if page_fetch_ok:
+            pages_succeeded += 1
+
+        if page_parsed:
+            rows.extend(page_parsed)
+            page_stats.append(
+                {
+                    "page": page,
+                    "source": chosen_source,
+                    "parsed_entries": len(page_parsed),
+                    "error": None,
+                    "page_issue": None,
+                    "sources_tried": source_attempts,
+                }
+            )
             continue
 
-        parsed = parse_review_entries(text)
-        pages_succeeded += 1
-        page_stats.append({"page": page, "parsed_entries": len(parsed), "error": None})
-        if not parsed and page > 1:
+        if not source_attempts:
+            page_stats.append(
+                {
+                    "page": page,
+                    "source": None,
+                    "parsed_entries": 0,
+                    "error": "no source attempts",
+                    "page_issue": "unknown_error",
+                    "sources_tried": [],
+                }
+            )
+            continue
+
+        final_issue = "parsed_zero"
+        if all(str(item.get("page_issue")) == "network_error" for item in source_attempts):
+            final_issue = "network_error"
+        elif any(str(item.get("page_issue")) == "blocked_page" for item in source_attempts):
+            final_issue = "blocked_page"
+
+        page_stats.append(
+            {
+                "page": page,
+                "source": source_attempts[-1].get("source"),
+                "parsed_entries": 0,
+                "error": None if final_issue != "network_error" else "all sources failed with network errors",
+                "page_issue": final_issue,
+                "sources_tried": source_attempts,
+            }
+        )
+        if page > 1:
             break
-        rows.extend(parsed)
+
+    failure_reason = _classify_failure_reason(
+        has_rows=bool(rows),
+        blocked_pages=blocked_pages,
+        pages_succeeded=pages_succeeded,
+        network_errors=network_errors,
+    )
 
     diagnostics = {
         "asin": asin,
         "site": site,
+        "source_candidates": source_candidates,
         "pages_attempted": pages_attempted,
         "pages_succeeded": pages_succeeded,
         "entries_parsed": len(rows),
         "status": "ok" if rows else "failed",
+        "failure_reason": failure_reason,
         "errors": errors,
         "pages": page_stats,
     }
-    if not rows and not errors:
-        diagnostics["errors"] = ["no review entries parsed"]
+    if not rows:
+        if failure_reason == "blocked_page":
+            diagnostics["errors"] = errors or ["blocked page detected"]
+        elif failure_reason == "parsed_zero":
+            diagnostics["errors"] = errors or ["no review entries parsed"]
+        elif not errors:
+            diagnostics["errors"] = ["review fetch failed"]
     return rows, diagnostics
 
 
@@ -203,6 +356,8 @@ def main(argv: list[str] | None = None) -> int:
             f"[review-fetch] asin={asin} status={diagnostics.get('status')} "
             f"entries={diagnostics.get('entries_parsed')} pages_ok={diagnostics.get('pages_succeeded')}/{diagnostics.get('pages_attempted')}"
         )
+        if diagnostics.get("failure_reason"):
+            print(f"[review-fetch] asin={asin} failure_reason={diagnostics.get('failure_reason')}")
         if diagnostics.get("errors"):
             print(f"[review-fetch] asin={asin} errors={diagnostics.get('errors')}")
 
