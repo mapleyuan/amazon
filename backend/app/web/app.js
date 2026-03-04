@@ -37,6 +37,7 @@ const KEYWORD_STOPWORDS = new Set([
 let manifest = null;
 let dailyPayload = null;
 let filteredItems = [];
+let competitorMonthlyRows = [];
 const dailyCache = new Map();
 const officialInsightsCache = new Map();
 let trendRequestId = 0;
@@ -344,6 +345,179 @@ function renderMonthlySalesInsights(rows, asin) {
     tbody.appendChild(tr);
   });
 
+  table.appendChild(tbody);
+  container.appendChild(table);
+}
+
+function selectTrackedAsinsFromItems(items, limit = 10) {
+  const seen = new Set();
+  const sorted = [...(Array.isArray(items) ? items : [])].sort((left, right) => {
+    const rankA = parseNumber(left.rank);
+    const rankB = parseNumber(right.rank);
+    if (rankA !== null && rankB !== null && rankA !== rankB) return rankA - rankB;
+    if (rankA !== null && rankB === null) return -1;
+    if (rankA === null && rankB !== null) return 1;
+
+    const salesA = parseNumber(left.sales_month) ?? 0;
+    const salesB = parseNumber(right.sales_month) ?? 0;
+    if (salesA !== salesB) return salesB - salesA;
+    return String(left.asin || "").localeCompare(String(right.asin || ""));
+  });
+
+  const picked = [];
+  sorted.forEach((item) => {
+    const asin = String(item.asin || "").trim();
+    if (!asin || seen.has(asin)) return;
+    seen.add(asin);
+    picked.push(asin);
+  });
+  return picked.slice(0, Math.max(1, limit));
+}
+
+function buildCompetitorMonthlySalesRows(historyRows, items, maxAsins = 10) {
+  const trackedAsins = selectTrackedAsinsFromItems(items, maxAsins);
+  if (!trackedAsins.length) return [];
+  const trackedSet = new Set(trackedAsins);
+
+  const asinTitleMap = new Map();
+  items.forEach((item) => {
+    const asin = String(item.asin || "").trim();
+    if (!asin || !trackedSet.has(asin)) return;
+    if (!asinTitleMap.has(asin)) {
+      asinTitleMap.set(asin, String(item.title || "").trim());
+    }
+  });
+
+  const monthly = new Map();
+  historyRows.forEach((entry) => {
+    const month = monthKeyFromDate(entry.date);
+    if (!month) return;
+
+    entry.items.forEach((item) => {
+      const asin = String(item.asin || "").trim();
+      if (!trackedSet.has(asin)) return;
+
+      const key = `${month}||${asin}`;
+      const record = monthly.get(key) || {
+        month,
+        asin,
+        title: asinTitleMap.get(asin) || "",
+        monthSales: 0,
+        sampleDays: 0,
+        rankSum: 0,
+        rankDays: 0,
+      };
+      record.monthSales += parseNumber(item.sales_day) ?? 0;
+      record.sampleDays += 1;
+      const rank = parseNumber(item.rank);
+      if (rank !== null) {
+        record.rankSum += rank;
+        record.rankDays += 1;
+      }
+      monthly.set(key, record);
+    });
+  });
+
+  return [...monthly.values()]
+    .map((item) => ({
+      month: item.month,
+      asin: item.asin,
+      title: item.title,
+      monthSales: Math.round(item.monthSales),
+      sampleDays: item.sampleDays,
+      avgRank: item.rankDays ? item.rankSum / item.rankDays : null,
+    }))
+    .sort((left, right) => {
+      const monthCompare = sortMonthAsc(right.month, left.month);
+      if (monthCompare !== 0) return monthCompare;
+      const salesDiff = (parseNumber(right.monthSales) || 0) - (parseNumber(left.monthSales) || 0);
+      if (salesDiff !== 0) return salesDiff;
+      return String(left.asin || "").localeCompare(String(right.asin || ""));
+    });
+}
+
+function buildCompetitorMonthlySalesRowsFromOfficial(officialPayload, items, maxAsins = 10) {
+  const rows = Array.isArray(officialPayload?.monthly_sales) ? officialPayload.monthly_sales : [];
+  if (!rows.length) return [];
+
+  const trackedAsins = selectTrackedAsinsFromItems(items, maxAsins);
+  const trackedSet = trackedAsins.length ? new Set(trackedAsins) : null;
+
+  const asinTitleMap = new Map();
+  items.forEach((item) => {
+    const asin = String(item.asin || "").trim();
+    if (!asin) return;
+    if (trackedSet && !trackedSet.has(asin)) return;
+    if (!asinTitleMap.has(asin)) {
+      asinTitleMap.set(asin, String(item.title || "").trim());
+    }
+  });
+
+  return rows
+    .filter((row) => {
+      const asin = String(row.asin || "").trim();
+      if (!asin) return false;
+      if (trackedSet && !trackedSet.has(asin)) return false;
+      return true;
+    })
+    .map((row) => ({
+      month: String(row.month || "").trim(),
+      asin: String(row.asin || "").trim(),
+      title: asinTitleMap.get(String(row.asin || "").trim()) || "",
+      monthSales: parseNumber(row.units) || 0,
+      sampleDays: parseNumber(row.sample_days) || 0,
+      avgRank: parseNumber(row.avg_rank),
+    }))
+    .filter((row) => row.month && row.asin)
+    .sort((left, right) => {
+      const monthCompare = sortMonthAsc(right.month, left.month);
+      if (monthCompare !== 0) return monthCompare;
+      const salesDiff = (parseNumber(right.monthSales) || 0) - (parseNumber(left.monthSales) || 0);
+      if (salesDiff !== 0) return salesDiff;
+      return String(left.asin || "").localeCompare(String(right.asin || ""));
+    });
+}
+
+function renderMonthlySalesCompetitorTable(rows, sourceLabel) {
+  const container = document.getElementById("monthlySalesCompetitor");
+  if (!container) return;
+  container.innerHTML = "";
+
+  competitorMonthlyRows = Array.isArray(rows) ? rows : [];
+
+  const exportButton = document.getElementById("downloadMonthlySalesCsv");
+  if (exportButton) {
+    exportButton.disabled = !competitorMonthlyRows.length;
+  }
+
+  if (!Array.isArray(rows) || !rows.length) {
+    container.textContent = "近一年暂无竞品月销量明细。";
+    return;
+  }
+
+  const caption = document.createElement("p");
+  caption.className = "muted";
+  caption.textContent = `竞品月销量明细（近12个月，${sourceLabel}）`;
+  container.appendChild(caption);
+
+  const table = document.createElement("table");
+  table.className = "mini-table";
+  table.innerHTML =
+    "<thead><tr><th>月份</th><th>ASIN</th><th>商品名</th><th>月销量</th><th>采样日</th><th>月均排名</th></tr></thead>";
+
+  const tbody = document.createElement("tbody");
+  rows.slice(0, 160).forEach((row) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${row.month || "-"}</td>
+      <td>${row.asin || "-"}</td>
+      <td>${row.title || "-"}</td>
+      <td>${formatCompactNumber(row.monthSales)}</td>
+      <td>${row.sampleDays ?? "-"}</td>
+      <td>${row.avgRank === null ? "-" : row.avgRank.toFixed(1)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
   table.appendChild(tbody);
   container.appendChild(table);
 }
@@ -706,6 +880,7 @@ function resetInsightsView(message) {
   renderKeywordMetrics("trafficKeywords", null, "估算流量");
   renderKeywordMetrics("conversionKeywords", null, "转化分");
   renderMonthlySalesInsights(null, "");
+  renderMonthlySalesCompetitorTable(null, "");
   renderInsightList("styleTrendInsights", null);
 }
 
@@ -740,6 +915,8 @@ async function runCompetitiveInsights() {
     const officialKeywordInsights = buildKeywordInsightRowsFromOfficial(officialPayload);
     const officialReviewLines = buildReviewInsightLinesFromOfficial(officialPayload, selectedAsin);
     const officialMonthlyRows = buildMonthlySalesRowsFromOfficial(officialPayload, selectedAsin);
+    const officialCompetitorMonthlyRows = buildCompetitorMonthlySalesRowsFromOfficial(officialPayload, filteredItems, 12);
+    const estimatedCompetitorMonthlyRows = buildCompetitorMonthlySalesRows(historyRows, filteredItems, 12);
     const officialStyleLines = buildStyleTrendLinesFromOfficial(officialPayload);
 
     const keywordFromPublicSearch = isPublicSearchKeywordRows(officialPayload);
@@ -774,6 +951,10 @@ async function runCompetitiveInsights() {
       officialMonthlyRows.length ? officialMonthlyRows : buildMonthlySalesRows(historyRows, selectedAsin),
       selectedAsin,
     );
+    renderMonthlySalesCompetitorTable(
+      officialCompetitorMonthlyRows.length ? officialCompetitorMonthlyRows : estimatedCompetitorMonthlyRows,
+      officialCompetitorMonthlyRows.length ? "官方月销量" : "估算月销量",
+    );
     renderInsightList(
       "styleTrendInsights",
       officialStyleLines.length ? officialStyleLines : buildStyleTrendLines(historyRows),
@@ -791,6 +972,7 @@ async function runCompetitiveInsights() {
   renderKeywordMetrics("trafficKeywords", keywordInsights.trafficRows, "估算流量");
   renderKeywordMetrics("conversionKeywords", keywordInsights.conversionRows, "转化分");
   renderMonthlySalesInsights(buildMonthlySalesRows(historyRows, selectedAsin), selectedAsin);
+  renderMonthlySalesCompetitorTable(buildCompetitorMonthlySalesRows(historyRows, filteredItems, 12), "估算月销量");
   renderInsightList("styleTrendInsights", buildStyleTrendLines(historyRows));
 
   setText(
@@ -1293,6 +1475,24 @@ function buildCsv(items) {
   return lines.join("\n");
 }
 
+function buildMonthlySalesCsv(rows) {
+  const headers = ["month", "asin", "title", "month_sales", "sample_days", "avg_rank"];
+  const lines = [headers.join(",")];
+  rows.forEach((row) => {
+    lines.push(
+      [
+        escapeCsv(row.month),
+        escapeCsv(row.asin),
+        escapeCsv(row.title),
+        escapeCsv(row.monthSales),
+        escapeCsv(row.sampleDays),
+        escapeCsv(row.avgRank === null ? "" : row.avgRank.toFixed(2)),
+      ].join(","),
+    );
+  });
+  return lines.join("\n");
+}
+
 function downloadCsv() {
   if (!filteredItems.length) {
     window.alert("当前筛选结果为空，无法导出。");
@@ -1306,6 +1506,25 @@ function downloadCsv() {
   const a = document.createElement("a");
   a.href = url;
   a.download = `ranks-${date}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function downloadMonthlySalesCsv() {
+  if (!competitorMonthlyRows.length) {
+    window.alert("当前无可导出的月销量明细。");
+    return;
+  }
+
+  const date = document.getElementById("snapshot_date").value || "unknown";
+  const csv = buildMonthlySalesCsv(competitorMonthlyRows);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `monthly-sales-${date}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -1433,6 +1652,7 @@ async function initialize() {
   document.getElementById("sort_order").addEventListener("change", applyFilters);
   document.getElementById("searchRanks").addEventListener("click", applyFilters);
   document.getElementById("downloadCsv").addEventListener("click", downloadCsv);
+  document.getElementById("downloadMonthlySalesCsv").addEventListener("click", downloadMonthlySalesCsv);
   document.getElementById("runInsights").addEventListener("click", () => {
     runCompetitiveInsights().catch(showError);
   });

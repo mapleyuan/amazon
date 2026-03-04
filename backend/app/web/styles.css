@@ -274,6 +274,10 @@ td {
   color: #334155;
 }
 
+.insight-actions {
+  margin: 10px 0 8px;
+}
+
 .insight-list {
   margin: 0;
   padding-left: 18px;

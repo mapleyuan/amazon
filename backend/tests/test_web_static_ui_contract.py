@@ -30,6 +30,8 @@ class WebStaticUiContractTests(unittest.TestCase):
         self.assertIn('id="trafficKeywords"', html)
         self.assertIn('id="conversionKeywords"', html)
         self.assertIn('id="monthlySalesInsights"', html)
+        self.assertIn('id="monthlySalesCompetitor"', html)
+        self.assertIn('id="downloadMonthlySalesCsv"', html)
         self.assertIn('id="styleTrendInsights"', html)
 
     def test_app_contains_compare_and_trend_logic_entrypoints(self) -> None:
@@ -44,6 +46,9 @@ class WebStaticUiContractTests(unittest.TestCase):
         self.assertIn("function getOfficialInsights", js)
         self.assertIn("function buildKeywordInsightRows", js)
         self.assertIn("function buildKeywordInsightRowsFromOfficial", js)
+        self.assertIn("function buildCompetitorMonthlySalesRows", js)
+        self.assertIn("function renderMonthlySalesCompetitorTable", js)
+        self.assertIn("function downloadMonthlySalesCsv", js)
         self.assertIn("function buildStyleTrendLines", js)
         self.assertIn("function buildStyleTrendLinesFromOfficial", js)
         self.assertIn("function populateAnalysisAsinOptions", js)
