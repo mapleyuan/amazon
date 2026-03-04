@@ -10,6 +10,7 @@
 
 - `backend/app/web/index.html`：排行榜页（筛选、对比昨日、趋势弹窗、CSV 导出）
 - `backend/app/web/insights.html`：竞品洞察页（评论/关键词/月销量/款式趋势 + 导出）
+- `backend/app/web/product.html`：单品分析页（URL 支持直达 ASIN，自动聚焦单品）
 - `backend/app/web/app.js`：共享数据加载与筛选逻辑，按 `body[data-page]` 自动适配页面
 
 ## GitHub Pages 部署

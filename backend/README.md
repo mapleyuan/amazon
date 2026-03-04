@@ -22,6 +22,7 @@ Static web UI lives in `backend/app/web/` and is split into:
 
 - `index.html`: rank browsing page
 - `insights.html`: competitor insights page
+- `product.html`: single competitor deep-analysis page
 - `app.js`: shared logic for both pages (auto-detects page via `body[data-page]`)
 
 ## Environment variables

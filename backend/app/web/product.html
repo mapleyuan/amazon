@@ -3,17 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Amazon 热门榜后台 - 竞品洞察</title>
+    <title>Amazon 热门榜后台 - 单品分析</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body data-page="insights">
+  <body data-page="product">
     <header>
       <h1>Amazon 热门榜后台</h1>
-      <p>竞品洞察页：评论痛点、关键词、月销量、款式趋势</p>
+      <p>单品分析页：针对单个 ASIN 的评论、关键词、销量与趋势分析</p>
       <nav class="page-nav" aria-label="主导航">
         <a class="nav-link" href="./index.html">排行榜</a>
-        <a class="nav-link active" href="./insights.html">竞品洞察</a>
-        <a class="nav-link" href="./product.html">单品分析</a>
+        <a class="nav-link" href="./insights.html">竞品洞察</a>
+        <a class="nav-link active" href="./product.html">单品分析</a>
       </nav>
     </header>
 
@@ -64,13 +64,13 @@
           <input id="keyword" placeholder="关键词(商品名/ASIN)" />
           <button id="searchRanks" type="button">筛选</button>
           <button id="downloadCsv" type="button">导出当前筛选 CSV</button>
-          <button id="runInsights" type="button">分析当前竞品</button>
+          <button id="runInsights" type="button">刷新单品分析</button>
         </div>
         <div class="row">
           <label for="analysisScope">分析范围:</label>
           <select id="analysisScope">
-            <option value="all">当前筛选竞品（默认）</option>
             <option value="single">单个竞品（按 ASIN）</option>
+            <option value="all">当前筛选竞品</option>
           </select>
           <label for="analysisAsin">单品 ASIN:</label>
           <select id="analysisAsin">
@@ -82,8 +82,13 @@
       </section>
 
       <section class="card">
+        <h2>当前单品</h2>
+        <div id="productFocus" class="insight-content">等待加载单品信息...</div>
+      </section>
+
+      <section class="card">
         <h2>竞品洞察（估算）</h2>
-        <p id="insightStatus" class="muted">点击“分析当前竞品”生成结果</p>
+        <p id="insightStatus" class="muted">正在准备单品分析...</p>
         <div class="insight-grid">
           <article class="insight-panel">
             <h3>1. 评论口碑与痛点（代理）</h3>

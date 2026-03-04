@@ -3,6 +3,8 @@ const DAILY_PATH_PREFIX = "./data/daily/";
 const INSIGHTS_PATH_PREFIX = "./data/insights/";
 const APP_PAGE = document.body?.dataset?.page || "ranks";
 const IS_RANKS_PAGE = APP_PAGE === "ranks";
+const IS_PRODUCT_PAGE = APP_PAGE === "product";
+const PAGE_URL_PARAMS = new URLSearchParams(window.location.search || "");
 
 const STATUS_CLASSES = [
   "status-success",
@@ -41,6 +43,7 @@ let dailyPayload = null;
 let filteredItems = [];
 let competitorMonthlyRows = [];
 let styleTrendRows = [];
+let pendingAsinFromUrl = "";
 const dailyCache = new Map();
 const officialInsightsCache = new Map();
 let trendRequestId = 0;
@@ -76,6 +79,90 @@ function bindEvent(id, eventName, handler) {
   const el = document.getElementById(id);
   if (!el) return;
   el.addEventListener(eventName, handler);
+}
+
+function readUrlValue(key) {
+  const raw = PAGE_URL_PARAMS.get(key);
+  return raw === null ? "" : String(raw).trim();
+}
+
+function applyInitialUrlFilters() {
+  const date = readUrlValue("date");
+  const site = readUrlValue("site");
+  const board = readUrlValue("board");
+  const category = readUrlValue("category");
+  const topN = readUrlValue("top_n");
+  const hasPrice = readUrlValue("has_price");
+  const sortBy = readUrlValue("sort_by");
+  const sortOrder = readUrlValue("sort_order");
+  const keyword = readUrlValue("keyword");
+  const asin = readUrlValue("asin");
+
+  if (site) setInputValue("site", site);
+  if (board) setInputValue("board_type", board);
+  if (category) setInputValue("category_key", category);
+  if (topN) setInputValue("top_n", topN);
+  if (hasPrice) setInputValue("has_price", hasPrice);
+  if (sortBy) setInputValue("sort_by", sortBy);
+  if (sortOrder) setInputValue("sort_order", sortOrder);
+  if (keyword) setInputValue("keyword", keyword);
+  if (date) setInputValue("snapshot_date", date);
+
+  if (asin) {
+    pendingAsinFromUrl = asin;
+    setInputValue("analysisScope", "single");
+    // Avoid losing a requested ASIN when the select options are rebuilt from current filters.
+    if (!keyword) {
+      setInputValue("keyword", asin);
+    }
+  }
+}
+
+function updateProductFocus() {
+  const container = document.getElementById("productFocus");
+  if (!container) return;
+
+  const selectedAsin = normalizeSelectedAsin(getInputValue("analysisAsin", ""), filteredItems);
+  if (!selectedAsin) {
+    container.textContent = "未找到可分析的 ASIN，请调整筛选条件。";
+    return;
+  }
+
+  const selectedItem = filteredItems.find(
+    (item) => String(item.asin || "").trim() === String(selectedAsin || "").trim(),
+  );
+  if (!selectedItem) {
+    container.textContent = `当前样本中未命中 ASIN ${selectedAsin}，请检查筛选条件。`;
+    return;
+  }
+
+  const detailUrl = selectedItem.detail_url ? String(selectedItem.detail_url) : "";
+  const parts = [
+    `ASIN: ${selectedAsin}`,
+    `排名: ${selectedItem.rank ?? "-"}`,
+    `近30天销量: ${formatCompactNumber(selectedItem.sales_month)}`,
+    `近1年销量: ${formatCompactNumber(selectedItem.sales_year)}`,
+  ];
+  container.innerHTML = "";
+  const text = document.createElement("p");
+  text.className = "muted";
+  text.textContent = parts.join(" | ");
+  container.appendChild(text);
+
+  const title = document.createElement("p");
+  title.textContent = String(selectedItem.title || "-");
+  title.className = "product-title";
+  container.appendChild(title);
+
+  if (detailUrl) {
+    const link = document.createElement("a");
+    link.href = detailUrl;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.className = "inline-link";
+    link.textContent = "打开 Amazon 商品详情";
+    container.appendChild(link);
+  }
 }
 
 function showError(error) {
@@ -1088,6 +1175,7 @@ function populateAnalysisAsinOptions() {
   if (!select) return;
 
   const previous = select.value;
+  const preferred = pendingAsinFromUrl || previous;
   const unique = [];
   const seen = new Set();
   filteredItems.forEach((item) => {
@@ -1106,8 +1194,19 @@ function populateAnalysisAsinOptions() {
     select.appendChild(option);
   });
 
-  if (previous && [...select.options].some((opt) => opt.value === previous)) {
-    select.value = previous;
+  if (preferred && [...select.options].some((opt) => opt.value === preferred)) {
+    select.value = preferred;
+    if (pendingAsinFromUrl && preferred === pendingAsinFromUrl) {
+      pendingAsinFromUrl = "";
+    }
+    return;
+  }
+
+  if (IS_PRODUCT_PAGE) {
+    const fallbackAsin = normalizeSelectedAsin("", filteredItems);
+    if (fallbackAsin && [...select.options].some((opt) => opt.value === fallbackAsin)) {
+      select.value = fallbackAsin;
+    }
   }
 }
 
@@ -1217,13 +1316,22 @@ async function runCompetitiveInsights() {
 
   const filters = currentFilters();
   const anchorDate = getInputValue("snapshot_date", "");
-  const analysisScope = document.getElementById("analysisScope")?.value || "all";
+  const analysisScope = IS_PRODUCT_PAGE ? "single" : document.getElementById("analysisScope")?.value || "all";
+  if (IS_PRODUCT_PAGE) {
+    setInputValue("analysisScope", "single");
+  }
   const selectedAsin = normalizeSelectedAsin(getInputValue("analysisAsin", ""), filteredItems);
+  if (IS_PRODUCT_PAGE && !selectedAsin) {
+    setText("insightStatus", "当前筛选下未找到可分析的 ASIN。");
+    updateProductFocus();
+    return;
+  }
   const scopedItems =
     analysisScope === "single" && selectedAsin
       ? filteredItems.filter((item) => String(item.asin || "").trim() === selectedAsin)
       : filteredItems;
 
+  updateProductFocus();
   resetInsightsView("分析中，请稍候...");
   const officialPayload = await getOfficialInsights(anchorDate);
   if (currentRequestId !== insightRequestId) return;
@@ -1535,6 +1643,21 @@ function compareKey(item) {
   return `${item.site}||${item.board_type}||${item.category_key}||${item.asin}`;
 }
 
+function buildProductPageHref(item) {
+  const filters = currentFilters();
+  const params = new URLSearchParams();
+  params.set("date", getInputValue("snapshot_date", ""));
+  params.set("site", String(item.site || filters.site || ""));
+  params.set("board", String(item.board_type || filters.boardType || ""));
+  params.set("category", String(item.category_key || filters.categoryKey || ""));
+  params.set("asin", String(item.asin || ""));
+  params.set("top_n", String(filters.topN || "100"));
+  params.set("has_price", String(filters.hasPrice || "0"));
+  params.set("sort_by", String(filters.sortBy || "rank"));
+  params.set("sort_order", String(filters.sortOrder || "asc"));
+  return `./product.html?${params.toString()}`;
+}
+
 function openTrendModal() {
   const modal = document.getElementById("trendModal");
   if (!modal) return;
@@ -1770,7 +1893,20 @@ function renderTable(items) {
 
     const trendCell = tr.lastElementChild;
     if (trendCell) {
-      trendCell.appendChild(trendButton);
+      const actions = document.createElement("div");
+      actions.className = "cell-actions";
+      actions.appendChild(trendButton);
+
+      const asin = String(item.asin || "").trim();
+      if (asin) {
+        const insightLink = document.createElement("a");
+        insightLink.href = buildProductPageHref(item);
+        insightLink.className = "trend-btn secondary-btn";
+        insightLink.textContent = "单品分析";
+        actions.appendChild(insightLink);
+      }
+
+      trendCell.appendChild(actions);
     }
     tbody.appendChild(tr);
   });
@@ -1941,8 +2077,16 @@ function applyFilters() {
 
   renderTable(filteredItems);
   renderSummary();
+  if (IS_PRODUCT_PAGE) {
+    setInputValue("analysisScope", "single");
+  }
   populateAnalysisAsinOptions();
-  resetInsightsView("筛选条件已更新，请点击“分析当前竞品”刷新洞察");
+  updateProductFocus();
+  if (IS_PRODUCT_PAGE) {
+    resetInsightsView("筛选条件已更新，请点击“分析当前竞品”刷新单品洞察");
+  } else {
+    resetInsightsView("筛选条件已更新，请点击“分析当前竞品”刷新洞察");
+  }
 }
 
 async function getDailyPayload(date) {
@@ -2019,6 +2163,10 @@ async function initialize() {
   renderStatus();
   applyDefaultFilters();
   populateDateOptions();
+  applyInitialUrlFilters();
+  if (IS_PRODUCT_PAGE) {
+    setInputValue("analysisScope", "single");
+  }
   renderRecentDateButtons();
 
   bindEvent("snapshot_date", "change", () => {
@@ -2068,8 +2216,11 @@ async function initialize() {
     });
   }
 
-  resetInsightsView("点击“分析当前竞品”生成结果");
+  resetInsightsView(IS_PRODUCT_PAGE ? "单品页已就绪，正在生成洞察..." : "点击“分析当前竞品”生成结果");
   await handleDateChange(getInputValue("snapshot_date", ""));
+  if (IS_PRODUCT_PAGE) {
+    await runCompetitiveInsights();
+  }
 }
 
 initialize().catch((error) => {

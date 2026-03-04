@@ -199,6 +199,12 @@ td {
   font-size: 13px;
 }
 
+.cell-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .trend-modal {
   position: fixed;
   inset: 0;
@@ -314,6 +320,17 @@ td {
 
 .insight-actions {
   margin: 10px 0 8px;
+}
+
+.product-title {
+  margin: 6px 0;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.inline-link {
+  color: #0369a1;
+  text-decoration: underline;
 }
 
 .metric-bars {
