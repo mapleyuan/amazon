@@ -38,6 +38,7 @@ let manifest = null;
 let dailyPayload = null;
 let filteredItems = [];
 let competitorMonthlyRows = [];
+let styleTrendRows = [];
 const dailyCache = new Map();
 const officialInsightsCache = new Map();
 let trendRequestId = 0;
@@ -522,10 +523,8 @@ function renderMonthlySalesCompetitorTable(rows, sourceLabel) {
   container.appendChild(table);
 }
 
-function buildStyleTrendLines(historyRows) {
-  if (!historyRows.length) {
-    return ["近一年没有可用样本，无法计算款式趋势。"];
-  }
+function buildStyleTrendRows(historyRows, topNPerMonth = 12) {
+  if (!Array.isArray(historyRows) || !historyRows.length) return [];
 
   const monthStats = new Map();
   historyRows.forEach((entry) => {
@@ -542,44 +541,116 @@ function buildStyleTrendLines(historyRows) {
     monthStats.set(month, tokenMap);
   });
 
-  const months = [...monthStats.keys()].sort();
-  if (!months.length) {
-    return ["没有可用关键词样本。"];
+  const months = [...monthStats.keys()].sort(sortMonthAsc);
+  if (!months.length) return [];
+
+  const rows = [];
+  months.forEach((month, index) => {
+    const current = monthStats.get(month) || new Map();
+    const prev = index > 0 ? monthStats.get(months[index - 1]) || new Map() : new Map();
+    [...current.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, Math.max(1, topNPerMonth))
+      .forEach(([style, score]) => {
+        rows.push({
+          month,
+          style,
+          score: Math.round(score),
+          delta: Math.round(score - (prev.get(style) || 0)),
+        });
+      });
+  });
+
+  return rows.sort((left, right) => {
+    const monthCompare = sortMonthAsc(right.month, left.month);
+    if (monthCompare !== 0) return monthCompare;
+    const scoreDiff = (parseNumber(right.score) || 0) - (parseNumber(left.score) || 0);
+    if (scoreDiff !== 0) return scoreDiff;
+    return String(left.style || "").localeCompare(String(right.style || ""));
+  });
+}
+
+function buildStyleTrendSummaryLines(rows, sourceLabel = "估算") {
+  if (!Array.isArray(rows) || !rows.length) {
+    return [`${sourceLabel}款式趋势样本不足。`];
   }
 
+  const months = [...new Set(rows.map((row) => String(row.month || "").trim()).filter(Boolean))].sort(sortMonthAsc);
+  if (!months.length) return [`${sourceLabel}款式趋势样本不足。`];
+
   const latestMonth = months[months.length - 1];
-  const latest = monthStats.get(latestMonth) || new Map();
-  const hotKeywords = [...latest.entries()]
-    .sort((a, b) => b[1] - a[1])
+  const latestRows = rows
+    .filter((row) => String(row.month) === latestMonth)
+    .sort((a, b) => (parseNumber(b.score) || 0) - (parseNumber(a.score) || 0));
+  const hotStyles = latestRows
     .slice(0, 6)
-    .map(([keyword, score]) => `${keyword}(${Math.round(score)})`);
+    .map((item) => `${item.style}(${Math.round(parseNumber(item.score) || 0)})`);
 
   if (months.length < 2) {
     return [
-      `仅有 1 个月样本（${latestMonth}），暂无法计算环比趋势。`,
-      `当月热门款式词: ${hotKeywords.length ? hotKeywords.join("、") : "暂无"}`,
+      `${sourceLabel}款式趋势样本月份: ${latestMonth}（当前只有单月样本）`,
+      `当月热门款式: ${hotStyles.length ? hotStyles.join("、") : "暂无"}`,
     ];
   }
 
-  const prevMonth = months[months.length - 2];
-  const prev = monthStats.get(prevMonth) || new Map();
-  const growth = [];
-  latest.forEach((score, keyword) => {
-    const delta = score - (prev.get(keyword) || 0);
-    growth.push({ keyword, score, delta });
-  });
-
-  const rising = growth
-    .filter((item) => item.delta > 0)
-    .sort((a, b) => b.delta - a.delta)
+  const rising = latestRows
+    .filter((item) => (parseNumber(item.delta) || 0) > 0)
+    .sort((a, b) => (parseNumber(b.delta) || 0) - (parseNumber(a.delta) || 0))
     .slice(0, 6)
-    .map((item) => `${item.keyword}(+${Math.round(item.delta)})`);
+    .map((item) => `${item.style}(+${Math.round(parseNumber(item.delta) || 0)})`);
 
   return [
-    `样本月份: ${months[0]} ~ ${latestMonth}（共 ${months.length} 个月）。`,
-    `最新月热门款式词: ${hotKeywords.length ? hotKeywords.join("、") : "暂无"}`,
-    `相对上月上升款式词: ${rising.length ? rising.join("、") : "暂无明显上升词"}`,
+    `${sourceLabel}款式趋势样本: ${months[0]} ~ ${latestMonth}（共 ${months.length} 个月）`,
+    `最新月热门款式: ${hotStyles.length ? hotStyles.join("、") : "暂无"}`,
+    `相对上月上升款式: ${rising.length ? rising.join("、") : "暂无明显上升"}`,
   ];
+}
+
+function buildStyleTrendLines(historyRows) {
+  const rows = buildStyleTrendRows(historyRows);
+  return buildStyleTrendSummaryLines(rows, "估算");
+}
+
+function renderStyleTrendMonthlyTable(rows, sourceLabel) {
+  const container = document.getElementById("styleTrendMonthlyTable");
+  if (!container) return;
+  container.innerHTML = "";
+  styleTrendRows = Array.isArray(rows) ? rows : [];
+
+  const exportButton = document.getElementById("downloadStyleTrendCsv");
+  if (exportButton) {
+    exportButton.disabled = !styleTrendRows.length;
+  }
+
+  if (!styleTrendRows.length) {
+    container.textContent = "近一年暂无款式趋势明细。";
+    return;
+  }
+
+  const caption = document.createElement("p");
+  caption.className = "muted";
+  caption.textContent = `款式趋势月度明细（${sourceLabel}）`;
+  container.appendChild(caption);
+
+  const table = document.createElement("table");
+  table.className = "mini-table";
+  table.innerHTML = "<thead><tr><th>月份</th><th>款式词</th><th>热度值</th><th>环比变化</th></tr></thead>";
+
+  const tbody = document.createElement("tbody");
+  styleTrendRows.slice(0, 180).forEach((row) => {
+    const delta = parseNumber(row.delta) || 0;
+    const deltaText = delta > 0 ? `+${Math.round(delta)}` : `${Math.round(delta)}`;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${row.month || "-"}</td>
+      <td>${row.style || "-"}</td>
+      <td>${formatCompactNumber(row.score)}</td>
+      <td>${deltaText}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  container.appendChild(table);
 }
 
 function formatTopicLine(topics) {
@@ -715,7 +786,7 @@ function buildMonthlySalesRowsFromOfficial(officialPayload, asin) {
     .sort((left, right) => sortMonthAsc(left.month, right.month));
 }
 
-function buildStyleTrendLinesFromOfficial(officialPayload) {
+function buildStyleTrendRowsFromOfficial(officialPayload, topNPerMonth = 12) {
   const rows = Array.isArray(officialPayload?.style_trends) ? officialPayload.style_trends : [];
   if (!rows.length) return [];
 
@@ -733,34 +804,35 @@ function buildStyleTrendLinesFromOfficial(officialPayload) {
   const months = [...grouped.keys()].sort(sortMonthAsc);
   if (!months.length) return [];
 
-  const latestMonth = months[months.length - 1];
-  const latestMap = grouped.get(latestMonth) || new Map();
-  const latestTop = [...latestMap.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6)
-    .map(([style, score]) => `${style}(${Math.round(score)})`);
+  const trendRows = [];
+  months.forEach((month, index) => {
+    const current = grouped.get(month) || new Map();
+    const prev = index > 0 ? grouped.get(months[index - 1]) || new Map() : new Map();
+    [...current.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, Math.max(1, topNPerMonth))
+      .forEach(([style, score]) => {
+        trendRows.push({
+          month,
+          style,
+          score: Math.round(score),
+          delta: Math.round(score - (prev.get(style) || 0)),
+        });
+      });
+  });
 
-  if (months.length < 2) {
-    return [
-      `官方款式趋势样本月份: ${latestMonth}（当前只有单月样本）`,
-      `当月热门款式: ${latestTop.length ? latestTop.join("、") : "暂无"}`,
-    ];
-  }
+  return trendRows.sort((left, right) => {
+    const monthCompare = sortMonthAsc(right.month, left.month);
+    if (monthCompare !== 0) return monthCompare;
+    const scoreDiff = (parseNumber(right.score) || 0) - (parseNumber(left.score) || 0);
+    if (scoreDiff !== 0) return scoreDiff;
+    return String(left.style || "").localeCompare(String(right.style || ""));
+  });
+}
 
-  const prevMonth = months[months.length - 2];
-  const prevMap = grouped.get(prevMonth) || new Map();
-  const rising = [...latestMap.entries()]
-    .map(([style, score]) => ({ style, delta: score - (prevMap.get(style) || 0) }))
-    .filter((item) => item.delta > 0)
-    .sort((a, b) => b.delta - a.delta)
-    .slice(0, 6)
-    .map((item) => `${item.style}(+${Math.round(item.delta)})`);
-
-  return [
-    `官方款式趋势样本: ${months[0]} ~ ${latestMonth}（共 ${months.length} 个月）`,
-    `最新月热门款式: ${latestTop.length ? latestTop.join("、") : "暂无"}`,
-    `相对上月上升款式: ${rising.length ? rising.join("、") : "暂无明显上升"}`,
-  ];
+function buildStyleTrendLinesFromOfficial(officialPayload) {
+  const rows = buildStyleTrendRowsFromOfficial(officialPayload);
+  return buildStyleTrendSummaryLines(rows, "官方");
 }
 
 function populateAnalysisAsinOptions() {
@@ -882,6 +954,7 @@ function resetInsightsView(message) {
   renderMonthlySalesInsights(null, "");
   renderMonthlySalesCompetitorTable(null, "");
   renderInsightList("styleTrendInsights", null);
+  renderStyleTrendMonthlyTable(null, "");
 }
 
 async function runCompetitiveInsights() {
@@ -917,6 +990,8 @@ async function runCompetitiveInsights() {
     const officialMonthlyRows = buildMonthlySalesRowsFromOfficial(officialPayload, selectedAsin);
     const officialCompetitorMonthlyRows = buildCompetitorMonthlySalesRowsFromOfficial(officialPayload, filteredItems, 12);
     const estimatedCompetitorMonthlyRows = buildCompetitorMonthlySalesRows(historyRows, filteredItems, 12);
+    const officialStyleTrendRows = buildStyleTrendRowsFromOfficial(officialPayload, 12);
+    const estimatedStyleTrendRows = buildStyleTrendRows(historyRows, 12);
     const officialStyleLines = buildStyleTrendLinesFromOfficial(officialPayload);
 
     const keywordFromPublicSearch = isPublicSearchKeywordRows(officialPayload);
@@ -959,6 +1034,10 @@ async function runCompetitiveInsights() {
       "styleTrendInsights",
       officialStyleLines.length ? officialStyleLines : buildStyleTrendLines(historyRows),
     );
+    renderStyleTrendMonthlyTable(
+      officialStyleTrendRows.length ? officialStyleTrendRows : estimatedStyleTrendRows,
+      officialStyleTrendRows.length ? "官方款式趋势" : "估算款式趋势",
+    );
 
     setText(
       "insightStatus",
@@ -974,6 +1053,7 @@ async function runCompetitiveInsights() {
   renderMonthlySalesInsights(buildMonthlySalesRows(historyRows, selectedAsin), selectedAsin);
   renderMonthlySalesCompetitorTable(buildCompetitorMonthlySalesRows(historyRows, filteredItems, 12), "估算月销量");
   renderInsightList("styleTrendInsights", buildStyleTrendLines(historyRows));
+  renderStyleTrendMonthlyTable(buildStyleTrendRows(historyRows, 12), "估算款式趋势");
 
   setText(
     "insightStatus",
@@ -1493,6 +1573,22 @@ function buildMonthlySalesCsv(rows) {
   return lines.join("\n");
 }
 
+function buildStyleTrendCsv(rows) {
+  const headers = ["month", "style", "score", "delta"];
+  const lines = [headers.join(",")];
+  rows.forEach((row) => {
+    lines.push(
+      [
+        escapeCsv(row.month),
+        escapeCsv(row.style),
+        escapeCsv(row.score),
+        escapeCsv(row.delta),
+      ].join(","),
+    );
+  });
+  return lines.join("\n");
+}
+
 function downloadCsv() {
   if (!filteredItems.length) {
     window.alert("当前筛选结果为空，无法导出。");
@@ -1525,6 +1621,25 @@ function downloadMonthlySalesCsv() {
   const a = document.createElement("a");
   a.href = url;
   a.download = `monthly-sales-${date}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function downloadStyleTrendCsv() {
+  if (!styleTrendRows.length) {
+    window.alert("当前无可导出的款式趋势明细。");
+    return;
+  }
+
+  const date = document.getElementById("snapshot_date").value || "unknown";
+  const csv = buildStyleTrendCsv(styleTrendRows);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `style-trend-${date}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -1653,6 +1768,7 @@ async function initialize() {
   document.getElementById("searchRanks").addEventListener("click", applyFilters);
   document.getElementById("downloadCsv").addEventListener("click", downloadCsv);
   document.getElementById("downloadMonthlySalesCsv").addEventListener("click", downloadMonthlySalesCsv);
+  document.getElementById("downloadStyleTrendCsv").addEventListener("click", downloadStyleTrendCsv);
   document.getElementById("runInsights").addEventListener("click", () => {
     runCompetitiveInsights().catch(showError);
   });
