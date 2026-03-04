@@ -24,7 +24,7 @@
 4. 当前配置为长期保留历史（`retention_days=0`）。
 5. 若当天抓取失败，保留最近一次成功数据并在 `manifest` 中标记 `status=stale`。
 
-## 官方洞察数据（真实报表优先）
+## 洞察数据（真实报表优先，免费评论兜底）
 
 前端“竞品洞察”模块会优先读取：
 
@@ -37,7 +37,7 @@ cd backend
 python3 scripts/refresh_official_insights.py --snapshot-date 2026-03-03
 ```
 
-若没有官方报表文件，页面会自动回退到估算模式。
+若没有官方报表文件，工作流会自动尝试“免费公开评论抓取”生成评论痛点洞察；其余维度回退到估算模式。
 
 默认会尝试获取：
 
@@ -45,6 +45,17 @@ python3 scripts/refresh_official_insights.py --snapshot-date 2026-03-03
 2. 关键词流量与转化：Search Query Performance 报表
 3. 各月销量：Sales and Traffic 报表（月粒度 + ASIN 粒度）
 4. 款式趋势：优先官方 style 报表，缺失时基于官方关键词自动聚合
+
+无付费 API 的默认兜底脚本：
+
+```bash
+cd backend
+python3 scripts/refresh_public_review_insights.py --snapshot-date 2026-03-03 --site amazon.com
+```
+
+该脚本会读取当日 `daily` 数据中的 Top ASIN，抓取公开评论页并归纳正负向主题词，写入：
+
+- `backend/app/web/data/insights/YYYY-MM-DD.json`（`source=public_reviews`）
 
 ## 本地手动兜底更新
 

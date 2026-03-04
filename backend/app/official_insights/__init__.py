@@ -10,6 +10,7 @@ from .builder import (
     parse_style_trend_rows_from_json,
 )
 from .sp_api import SPAPIClient, SPAPIConfig, fetch_report_to_file
+from .public_reviews import build_review_topic_summary, parse_review_entries
 
 __all__ = [
     "build_official_insights_payload",
@@ -24,4 +25,6 @@ __all__ = [
     "SPAPIClient",
     "SPAPIConfig",
     "fetch_report_to_file",
+    "build_review_topic_summary",
+    "parse_review_entries",
 ]

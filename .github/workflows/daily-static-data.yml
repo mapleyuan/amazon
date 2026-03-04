@@ -59,6 +59,15 @@ jobs:
             --marketplace-ids A1PA6795UKMFR9 \
             --lookback-days 30
 
+      - name: Build public review insights (free fallback)
+        run: |
+          cd backend
+          python3 scripts/refresh_public_review_insights.py \
+            --snapshot-date "$(date -u +%F)" \
+            --site amazon.com \
+            --asin-limit 8 \
+            --pages-per-asin 2
+
       - name: Commit and push data updates
         run: |
           if git diff --quiet -- backend/app/web/data; then

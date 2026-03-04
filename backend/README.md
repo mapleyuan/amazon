@@ -124,3 +124,28 @@ Required env vars for SP-API pull:
 - `AMAZON_SPAPI_AWS_SECRET_ACCESS_KEY`
 - `AMAZON_SPAPI_AWS_REGION` (default `us-east-1`)
 - `AMAZON_SPAPI_ENDPOINT` (or set `AMAZON_SPAPI_REGION` as `na/eu/fe`)
+
+## Refresh public review insights (free fallback, no paid API)
+
+When you do not use SP-API, you can still build real review pain-point topics from public review pages:
+
+```bash
+cd backend
+python3 scripts/refresh_public_review_insights.py \
+  --snapshot-date 2026-03-03 \
+  --site amazon.com \
+  --asin-limit 8 \
+  --pages-per-asin 2
+```
+
+Behavior:
+
+- Read top ASINs from `app/web/data/daily/<date>.json` (or override via `--asins`)
+- Fetch review pages and parse rating + text
+- Build positive/negative topic mentions
+- Write/merge into `app/web/data/insights/<date>.json`
+
+Source label in output:
+
+- `public_reviews`: only public review-derived insights
+- `mixed_reports_public_reviews`: merged official report payload + public review topics

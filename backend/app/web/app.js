@@ -428,12 +428,30 @@ function buildReviewInsightLinesFromOfficial(officialPayload, asin) {
   const selected =
     topics.find((item) => String(item.asin || "").trim() === String(asin || "").trim()) || topics[0];
   if (!selected) return [];
+  const source = String(officialPayload?.source || "").trim();
+  const sampleReviews = parseNumber(selected.sample_reviews);
+  const sourceLabel =
+    source === "public_reviews" || source === "mixed_reports_public_reviews"
+      ? "公开评论抓取"
+      : "官方评论主题";
+  const sampleLine =
+    sampleReviews !== null && sampleReviews > 0 ? `评论样本: ${sampleReviews} 条（${sourceLabel}）` : "";
 
   return [
-    `ASIN ${selected.asin || asin || "-"} 的官方评论主题洞察`,
+    sampleLine,
+    `ASIN ${selected.asin || asin || "-"} 的${sourceLabel}洞察`,
     `好评主题: ${formatTopicLine(selected.positive_topics)}`,
     `差评痛点: ${formatTopicLine(selected.negative_topics)}`,
-  ];
+  ].filter(Boolean);
+}
+
+function formatInsightsSourceLabel(source) {
+  const value = String(source || "").trim();
+  if (!value) return "估算模式";
+  if (value === "official_reports") return "官方报表";
+  if (value === "public_reviews") return "公开评论抓取";
+  if (value === "mixed_reports_public_reviews") return "官方报表 + 公开评论";
+  return value;
 }
 
 function buildKeywordInsightRowsFromOfficial(officialPayload) {
@@ -718,7 +736,7 @@ async function runCompetitiveInsights() {
 
     setText(
       "insightStatus",
-      `已完成分析：优先使用官方报表数据（关键词 ${officialKeywordRows}，月销量 ${officialSalesRows}，评论主题 ${officialReviewRows}，款式趋势 ${officialStyleRows}）。`,
+      `已完成分析：数据源 ${formatInsightsSourceLabel(officialPayload?.source)}（关键词 ${officialKeywordRows}，月销量 ${officialSalesRows}，评论主题 ${officialReviewRows}，款式趋势 ${officialStyleRows}）。`,
     );
     return;
   }
