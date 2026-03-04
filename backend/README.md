@@ -16,6 +16,14 @@ cd backend
 python3 -m unittest discover -s tests -v
 ```
 
+## Frontend pages
+
+Static web UI lives in `backend/app/web/` and is split into:
+
+- `index.html`: rank browsing page
+- `insights.html`: competitor insights page
+- `app.js`: shared logic for both pages (auto-detects page via `body[data-page]`)
+
 ## Environment variables
 
 - `AMAZON_DB_PATH`: sqlite db file path (default `backend/data/amazon.db`)

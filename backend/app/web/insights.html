@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Amazon 热门榜后台 - 竞品洞察</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body data-page="insights">
+    <header>
+      <h1>Amazon 热门榜后台</h1>
+      <p>竞品洞察页：评论痛点、关键词、月销量、款式趋势</p>
+      <nav class="page-nav" aria-label="主导航">
+        <a class="nav-link" href="./index.html">排行榜</a>
+        <a class="nav-link active" href="./insights.html">竞品洞察</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="card status-card">
+        <h2>数据状态</h2>
+        <div id="statusBanner" class="status-banner status-loading">数据加载中</div>
+        <p class="muted">状态: <code id="dataStatus">loading</code></p>
+        <p class="muted">数据来源: <code id="dataSource">-</code></p>
+        <p class="muted">最后成功日期: <code id="lastSuccessDate">-</code></p>
+        <p class="muted">最后尝试时间: <code id="lastAttemptAt">-</code></p>
+      </section>
+
+      <section class="card">
+        <h2>筛选</h2>
+        <div class="row">
+          <select id="snapshot_date"></select>
+          <select id="site">
+            <option value="amazon.com">amazon.com</option>
+            <option value="amazon.co.jp">amazon.co.jp</option>
+            <option value="amazon.co.uk">amazon.co.uk</option>
+          </select>
+          <select id="board_type">
+            <option value="best_sellers">best_sellers</option>
+            <option value="new_releases">new_releases</option>
+            <option value="movers_and_shakers">movers_and_shakers</option>
+          </select>
+          <select id="category_key">
+            <option value="">全部类目</option>
+          </select>
+          <select id="has_price">
+            <option value="1">仅有价格</option>
+            <option value="0">包含无价格</option>
+          </select>
+          <input id="top_n" type="number" min="1" max="100" value="100" placeholder="Top N" />
+          <select id="sort_by">
+            <option value="rank">按排名</option>
+            <option value="sales_day">按当日销量</option>
+            <option value="sales_month">按近30天销量</option>
+            <option value="sales_year">按近1年销量</option>
+            <option value="rating">按评分</option>
+            <option value="review_count">按评论数</option>
+          </select>
+          <select id="sort_order">
+            <option value="asc">升序</option>
+            <option value="desc">降序</option>
+          </select>
+          <input id="keyword" placeholder="关键词(商品名/ASIN)" />
+          <button id="searchRanks" type="button">筛选</button>
+          <button id="downloadCsv" type="button">导出当前筛选 CSV</button>
+          <button id="runInsights" type="button">分析当前竞品</button>
+        </div>
+        <div class="row">
+          <label for="analysisScope">分析范围:</label>
+          <select id="analysisScope">
+            <option value="all">当前筛选竞品（默认）</option>
+            <option value="single">单个竞品（按 ASIN）</option>
+          </select>
+          <label for="analysisAsin">单品 ASIN:</label>
+          <select id="analysisAsin">
+            <option value="">自动选择当前Top1</option>
+          </select>
+        </div>
+        <div class="row" id="recentDateButtons"></div>
+        <div id="querySummary"></div>
+      </section>
+
+      <section class="card">
+        <h2>竞品洞察（估算）</h2>
+        <p id="insightStatus" class="muted">点击“分析当前竞品”生成结果</p>
+        <div class="insight-grid">
+          <article class="insight-panel">
+            <h3>1. 评论口碑与痛点（代理）</h3>
+            <div id="reviewInsights" class="insight-content"></div>
+            <div id="reviewRatingChart" class="insight-content"></div>
+            <div id="reviewSentimentChart" class="insight-content"></div>
+            <div id="reviewSnippetList" class="insight-content"></div>
+          </article>
+          <article class="insight-panel">
+            <h3>2. 流量关键词与转化关键词（估）</h3>
+            <div class="keyword-columns">
+              <div>
+                <h4>主要流量关键词</h4>
+                <div id="trafficKeywords" class="insight-content"></div>
+              </div>
+              <div>
+                <h4>转化较好关键词</h4>
+                <div id="conversionKeywords" class="insight-content"></div>
+              </div>
+            </div>
+          </article>
+          <article class="insight-panel">
+            <h3>3. 各月份销量（明细）</h3>
+            <div id="monthlySalesInsights" class="insight-content"></div>
+            <div class="insight-actions">
+              <button id="downloadMonthlySalesCsv" type="button">导出月销量明细 CSV</button>
+            </div>
+            <div id="monthlySalesCompetitor" class="insight-content"></div>
+          </article>
+          <article class="insight-panel">
+            <h3>4. 款式流行趋势（估）</h3>
+            <div id="styleTrendInsights" class="insight-content"></div>
+            <div class="insight-actions">
+              <button id="downloadStyleTrendCsv" type="button">导出款式趋势 CSV</button>
+            </div>
+            <div id="styleTrendMonthlyTable" class="insight-content"></div>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

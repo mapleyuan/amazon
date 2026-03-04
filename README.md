@@ -6,6 +6,12 @@
 
 `https://mapleyuan.github.io/amazon/`
 
+## 页面结构（已拆分）
+
+- `backend/app/web/index.html`：排行榜页（筛选、对比昨日、趋势弹窗、CSV 导出）
+- `backend/app/web/insights.html`：竞品洞察页（评论/关键词/月销量/款式趋势 + 导出）
+- `backend/app/web/app.js`：共享数据加载与筛选逻辑，按 `body[data-page]` 自动适配页面
+
 ## GitHub Pages 部署
 
 1. 确保仓库 `Settings -> Pages -> Source` 选择 `GitHub Actions`。

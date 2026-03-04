@@ -23,6 +23,15 @@ header {
   color: #f8fafc;
 }
 
+header h1 {
+  margin: 0 0 4px;
+}
+
+header p {
+  margin: 0;
+  color: #cbd5e1;
+}
+
 main {
   padding: 16px;
   display: grid;
@@ -62,9 +71,38 @@ button {
   cursor: pointer;
 }
 
+.action-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: #0369a1;
+  color: #fff;
+}
+
 .secondary-btn {
   background: #e2e8f0;
   color: #0f172a;
+}
+
+.page-nav {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.nav-link {
+  color: #0f172a;
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+  font-weight: 600;
+}
+
+.nav-link.active {
+  color: #fff;
+  background: #0f766e;
+  border-color: #0f766e;
 }
 
 .status-card {
@@ -358,6 +396,10 @@ td {
 @media (max-width: 768px) {
   header h1 {
     font-size: 20px;
+  }
+
+  .page-nav {
+    margin-top: 10px;
   }
 
   .trend-bar-row {

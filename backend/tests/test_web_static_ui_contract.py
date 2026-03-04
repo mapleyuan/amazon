@@ -8,22 +8,54 @@ WEB_DIR = Path(__file__).resolve().parents[1] / "app" / "web"
 
 
 class WebStaticUiContractTests(unittest.TestCase):
-    def test_index_contains_status_source_quick_dates_compare_and_trend_controls(self) -> None:
+    def test_index_contains_status_filters_ranking_and_trend_controls(self) -> None:
         html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
 
+        self.assertIn('data-page="ranks"', html)
+        self.assertIn('href="./insights.html"', html)
         self.assertIn('id="dataSource"', html)
         self.assertIn('id="recentDateButtons"', html)
         self.assertIn('id="compareYesterday"', html)
+        self.assertIn('id="clearCompare"', html)
+        self.assertIn('id="snapshot_date"', html)
+        self.assertIn('id="site"', html)
+        self.assertIn('id="board_type"', html)
+        self.assertIn('id="category_key"', html)
+        self.assertIn('id="has_price"', html)
+        self.assertIn('id="top_n"', html)
+        self.assertIn('id="sort_by"', html)
+        self.assertIn('id="sort_order"', html)
+        self.assertIn('id="keyword"', html)
+        self.assertIn('id="searchRanks"', html)
+        self.assertIn('id="downloadCsv"', html)
         self.assertIn("较昨日", html)
         self.assertIn("当日销量(估)", html)
         self.assertIn("近30天销量(估)", html)
         self.assertIn("近1年销量(估)", html)
         self.assertIn("销量趋势", html)
+        self.assertIn('id="ranksTable"', html)
         self.assertIn('id="trendModal"', html)
         self.assertIn('id="trendClose"', html)
         self.assertIn('id="trendTitle"', html)
         self.assertIn('id="trendChart"', html)
         self.assertIn('id="trendTable"', html)
+
+    def test_insights_contains_filters_and_insight_panels(self) -> None:
+        html = (WEB_DIR / "insights.html").read_text(encoding="utf-8")
+
+        self.assertIn('data-page="insights"', html)
+        self.assertIn('href="./index.html"', html)
+        self.assertIn('id="dataSource"', html)
+        self.assertIn('id="snapshot_date"', html)
+        self.assertIn('id="site"', html)
+        self.assertIn('id="board_type"', html)
+        self.assertIn('id="category_key"', html)
+        self.assertIn('id="has_price"', html)
+        self.assertIn('id="top_n"', html)
+        self.assertIn('id="sort_by"', html)
+        self.assertIn('id="sort_order"', html)
+        self.assertIn('id="keyword"', html)
+        self.assertIn('id="searchRanks"', html)
         self.assertIn('id="runInsights"', html)
         self.assertIn('id="analysisScope"', html)
         self.assertIn('id="analysisAsin"', html)
@@ -39,10 +71,13 @@ class WebStaticUiContractTests(unittest.TestCase):
         self.assertIn('id="styleTrendInsights"', html)
         self.assertIn('id="styleTrendMonthlyTable"', html)
         self.assertIn('id="downloadStyleTrendCsv"', html)
+        self.assertNotIn('id="ranksTable"', html)
+        self.assertNotIn('id="trendModal"', html)
 
     def test_app_contains_compare_and_trend_logic_entrypoints(self) -> None:
         js = (WEB_DIR / "app.js").read_text(encoding="utf-8")
 
+        self.assertIn("const APP_PAGE", js)
         self.assertIn("function compareWithPreviousDay", js)
         self.assertIn("function showSalesTrendForItem", js)
         self.assertIn("function collectSalesTrendWithinOneYear", js)

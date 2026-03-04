@@ -1,6 +1,8 @@
 const MANIFEST_PATH = "./data/manifest.json";
 const DAILY_PATH_PREFIX = "./data/daily/";
 const INSIGHTS_PATH_PREFIX = "./data/insights/";
+const APP_PAGE = document.body?.dataset?.page || "ranks";
+const IS_RANKS_PAGE = APP_PAGE === "ranks";
 
 const STATUS_CLASSES = [
   "status-success",
@@ -56,6 +58,24 @@ function setText(id, value) {
   const el = document.getElementById(id);
   if (!el) return;
   el.textContent = value ?? "";
+}
+
+function getInputValue(id, fallback = "") {
+  const el = document.getElementById(id);
+  if (!el || !("value" in el)) return fallback;
+  return String(el.value ?? fallback);
+}
+
+function setInputValue(id, value) {
+  const el = document.getElementById(id);
+  if (!el || !("value" in el)) return;
+  el.value = value;
+}
+
+function bindEvent(id, eventName, handler) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener(eventName, handler);
 }
 
 function showError(error) {
@@ -1196,9 +1216,9 @@ async function runCompetitiveInsights() {
   const currentRequestId = insightRequestId;
 
   const filters = currentFilters();
-  const anchorDate = document.getElementById("snapshot_date").value;
+  const anchorDate = getInputValue("snapshot_date", "");
   const analysisScope = document.getElementById("analysisScope")?.value || "all";
-  const selectedAsin = normalizeSelectedAsin(document.getElementById("analysisAsin").value, filteredItems);
+  const selectedAsin = normalizeSelectedAsin(getInputValue("analysisAsin", ""), filteredItems);
   const scopedItems =
     analysisScope === "single" && selectedAsin
       ? filteredItems.filter((item) => String(item.asin || "").trim() === selectedAsin)
@@ -1357,16 +1377,17 @@ function renderStatus() {
 
 function applyDefaultFilters() {
   const defaults = manifest?.default_filters || {};
-  if (defaults.site) document.getElementById("site").value = defaults.site;
-  if (defaults.board_type) document.getElementById("board_type").value = defaults.board_type;
-  if (defaults.has_price !== undefined) document.getElementById("has_price").value = String(defaults.has_price);
-  if (defaults.top_n !== undefined) document.getElementById("top_n").value = String(defaults.top_n);
-  if (defaults.sort_by) document.getElementById("sort_by").value = defaults.sort_by;
-  if (defaults.sort_order) document.getElementById("sort_order").value = defaults.sort_order;
+  if (defaults.site) setInputValue("site", defaults.site);
+  if (defaults.board_type) setInputValue("board_type", defaults.board_type);
+  if (defaults.has_price !== undefined) setInputValue("has_price", String(defaults.has_price));
+  if (defaults.top_n !== undefined) setInputValue("top_n", String(defaults.top_n));
+  if (defaults.sort_by) setInputValue("sort_by", defaults.sort_by);
+  if (defaults.sort_order) setInputValue("sort_order", defaults.sort_order);
 }
 
 function populateDateOptions() {
   const select = document.getElementById("snapshot_date");
+  if (!select) return;
   const dates = getManifestDates();
   select.innerHTML = "";
 
@@ -1398,7 +1419,7 @@ function renderRecentDateButtons() {
   if (!container) return;
 
   const dates = getManifestDates().slice(0, 7);
-  const selectedDate = document.getElementById("snapshot_date").value;
+  const selectedDate = getInputValue("snapshot_date", "");
   container.innerHTML = "";
 
   if (!dates.length) {
@@ -1411,7 +1432,7 @@ function renderRecentDateButtons() {
     button.className = `date-chip${date === selectedDate ? " active" : ""}`;
     button.textContent = date;
     button.addEventListener("click", () => {
-      document.getElementById("snapshot_date").value = date;
+      setInputValue("snapshot_date", date);
       handleDateChange(date).catch(showError);
     });
     container.appendChild(button);
@@ -1420,14 +1441,14 @@ function renderRecentDateButtons() {
 
 function currentFilters() {
   return {
-    site: document.getElementById("site").value,
-    boardType: document.getElementById("board_type").value,
-    categoryKey: document.getElementById("category_key").value,
-    hasPrice: document.getElementById("has_price").value,
-    topN: document.getElementById("top_n").value.trim(),
-    sortBy: document.getElementById("sort_by").value,
-    sortOrder: document.getElementById("sort_order").value,
-    keyword: document.getElementById("keyword").value.trim().toLowerCase(),
+    site: getInputValue("site", "amazon.com"),
+    boardType: getInputValue("board_type", "new_releases"),
+    categoryKey: getInputValue("category_key", ""),
+    hasPrice: getInputValue("has_price", "1"),
+    topN: getInputValue("top_n", "100").trim(),
+    sortBy: getInputValue("sort_by", "rank"),
+    sortOrder: getInputValue("sort_order", "asc"),
+    keyword: getInputValue("keyword", "").trim().toLowerCase(),
   };
 }
 
@@ -1486,9 +1507,10 @@ function filterItemsFromPayload(payload, filters) {
 
 function rebuildCategoryOptions() {
   const select = document.getElementById("category_key");
+  if (!select) return;
   const previous = select.value;
-  const site = document.getElementById("site").value;
-  const boardType = document.getElementById("board_type").value;
+  const site = getInputValue("site", "");
+  const boardType = getInputValue("board_type", "");
 
   select.innerHTML = '<option value="">全部类目</option>';
   if (!dailyPayload) return;
@@ -1594,7 +1616,7 @@ function renderTrendChart(points) {
 }
 
 async function collectSalesTrendWithinOneYear(item) {
-  const anchorDate = item.snapshot_date || document.getElementById("snapshot_date").value;
+  const anchorDate = item.snapshot_date || getInputValue("snapshot_date", "");
   const anchorStamp = parseSnapshotDate(anchorDate);
   if (anchorStamp === null) return [];
 
@@ -1710,6 +1732,7 @@ function buildCompareData(todayItems, prevPayload, filters) {
 
 function renderTable(items) {
   const tbody = document.querySelector("#ranksTable tbody");
+  if (!tbody) return;
   tbody.innerHTML = "";
 
   items.forEach((item) => {
@@ -1754,7 +1777,7 @@ function renderTable(items) {
 }
 
 function renderSummary() {
-  const date = document.getElementById("snapshot_date").value || "-";
+  const date = getInputValue("snapshot_date", "") || "-";
   let summary = `日期: ${date} | 结果数: ${filteredItems.length}`;
 
   if (compareState.enabled && compareState.prevDate) {
@@ -1844,7 +1867,7 @@ function downloadCsv() {
     return;
   }
 
-  const date = document.getElementById("snapshot_date").value || "unknown";
+  const date = getInputValue("snapshot_date", "") || "unknown";
   const csv = buildCsv(filteredItems);
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -1863,7 +1886,7 @@ function downloadMonthlySalesCsv() {
     return;
   }
 
-  const date = document.getElementById("snapshot_date").value || "unknown";
+  const date = getInputValue("snapshot_date", "") || "unknown";
   const csv = buildMonthlySalesCsv(competitorMonthlyRows);
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -1882,7 +1905,7 @@ function downloadStyleTrendCsv() {
     return;
   }
 
-  const date = document.getElementById("snapshot_date").value || "unknown";
+  const date = getInputValue("snapshot_date", "") || "unknown";
   const csv = buildStyleTrendCsv(styleTrendRows);
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -1957,7 +1980,7 @@ async function handleDateChange(date) {
 }
 
 async function compareWithPreviousDay() {
-  const currentDate = document.getElementById("snapshot_date").value;
+  const currentDate = getInputValue("snapshot_date", "");
   const dates = getManifestDates();
   const currentIndex = dates.indexOf(currentDate);
   if (currentIndex < 0 || currentIndex === dates.length - 1) {
@@ -1998,53 +2021,55 @@ async function initialize() {
   populateDateOptions();
   renderRecentDateButtons();
 
-  document.getElementById("snapshot_date").addEventListener("change", () => {
-    handleDateChange(document.getElementById("snapshot_date").value).catch(showError);
+  bindEvent("snapshot_date", "change", () => {
+    handleDateChange(getInputValue("snapshot_date", "")).catch(showError);
   });
-  document.getElementById("site").addEventListener("change", () => {
+  bindEvent("site", "change", () => {
     rebuildCategoryOptions();
     applyFilters();
   });
-  document.getElementById("board_type").addEventListener("change", () => {
+  bindEvent("board_type", "change", () => {
     rebuildCategoryOptions();
     applyFilters();
   });
-  document.getElementById("category_key").addEventListener("change", applyFilters);
-  document.getElementById("has_price").addEventListener("change", applyFilters);
-  document.getElementById("top_n").addEventListener("change", applyFilters);
-  document.getElementById("sort_by").addEventListener("change", applyFilters);
-  document.getElementById("sort_order").addEventListener("change", applyFilters);
-  document.getElementById("searchRanks").addEventListener("click", applyFilters);
-  document.getElementById("downloadCsv").addEventListener("click", downloadCsv);
-  document.getElementById("downloadMonthlySalesCsv").addEventListener("click", downloadMonthlySalesCsv);
-  document.getElementById("downloadStyleTrendCsv").addEventListener("click", downloadStyleTrendCsv);
-  document.getElementById("runInsights").addEventListener("click", () => {
+  bindEvent("category_key", "change", applyFilters);
+  bindEvent("has_price", "change", applyFilters);
+  bindEvent("top_n", "change", applyFilters);
+  bindEvent("sort_by", "change", applyFilters);
+  bindEvent("sort_order", "change", applyFilters);
+  bindEvent("searchRanks", "click", applyFilters);
+  bindEvent("downloadCsv", "click", downloadCsv);
+  bindEvent("downloadMonthlySalesCsv", "click", downloadMonthlySalesCsv);
+  bindEvent("downloadStyleTrendCsv", "click", downloadStyleTrendCsv);
+  bindEvent("runInsights", "click", () => {
     runCompetitiveInsights().catch(showError);
   });
-  document.getElementById("analysisScope").addEventListener("change", () => {
+  bindEvent("analysisScope", "change", () => {
     resetInsightsView("已切换分析范围，请点击“分析当前竞品”更新结果");
   });
-  document.getElementById("analysisAsin").addEventListener("change", () => {
+  bindEvent("analysisAsin", "change", () => {
     resetInsightsView("已切换 ASIN，请点击“分析当前竞品”更新结果");
   });
-  document.getElementById("compareYesterday").addEventListener("click", () => {
+  bindEvent("compareYesterday", "click", () => {
     compareWithPreviousDay().catch(showError);
   });
-  document.getElementById("clearCompare").addEventListener("click", clearCompare);
-  document.getElementById("trendClose").addEventListener("click", closeTrendModal);
-  document.getElementById("trendModal").addEventListener("click", (event) => {
+  bindEvent("clearCompare", "click", clearCompare);
+  bindEvent("trendClose", "click", closeTrendModal);
+  bindEvent("trendModal", "click", (event) => {
     if (event.target === event.currentTarget) {
       closeTrendModal();
     }
   });
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      closeTrendModal();
-    }
-  });
+  if (IS_RANKS_PAGE) {
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closeTrendModal();
+      }
+    });
+  }
 
   resetInsightsView("点击“分析当前竞品”生成结果");
-  await handleDateChange(document.getElementById("snapshot_date").value);
+  await handleDateChange(getInputValue("snapshot_date", ""));
 }
 
 initialize().catch((error) => {
