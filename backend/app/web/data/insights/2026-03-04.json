@@ -1,22 +1,10 @@
 {
   "snapshot_date": "2026-03-04",
-  "generated_at": "2026-03-04T06:45:36Z",
+  "generated_at": "2026-03-04T09:19:21Z",
   "source": "public_search_keywords",
   "keywords": [
     {
-      "keyword": "wedding",
-      "impressions": 200000,
-      "clicks": 16,
-      "purchases": 0,
-      "cvr": 0.0,
-      "result_count": 200000,
-      "top_asin_count": 16,
-      "top_asin_overlap": 0,
-      "overlap_sales_month": 0,
-      "sponsored_count": 5
-    },
-    {
-      "keyword": "pcs",
+      "keyword": "holders",
       "impressions": 100000,
       "clicks": 16,
       "purchases": 0,
@@ -25,19 +13,31 @@
       "top_asin_count": 16,
       "top_asin_overlap": 0,
       "overlap_sales_month": 0,
-      "sponsored_count": 5
+      "sponsored_count": 7
     },
     {
       "keyword": "table",
       "impressions": 100000,
-      "clicks": 1,
+      "clicks": 16,
       "purchases": 0,
       "cvr": 0.0,
       "result_count": 100000,
-      "top_asin_count": 0,
+      "top_asin_count": 16,
       "top_asin_overlap": 0,
       "overlap_sales_month": 0,
-      "sponsored_count": 4
+      "sponsored_count": 5
+    },
+    {
+      "keyword": "candlestick",
+      "impressions": 10000,
+      "clicks": 16,
+      "purchases": 1,
+      "cvr": 0.0625,
+      "result_count": 10000,
+      "top_asin_count": 16,
+      "top_asin_overlap": 1,
+      "overlap_sales_month": 1159,
+      "sponsored_count": 5
     }
   ],
   "monthly_sales": [],
