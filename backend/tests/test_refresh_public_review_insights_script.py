@@ -10,6 +10,12 @@ from scripts import refresh_public_review_insights
 
 
 class RefreshPublicReviewInsightsScriptTests(unittest.TestCase):
+    def test_review_page_url_uses_canonical_path_without_trailing_slash(self) -> None:
+        url = refresh_public_review_insights._review_page_url("amazon.com", "B08MLGXSPH", 2)
+        self.assertIn("/product-reviews/B08MLGXSPH?", url)
+        self.assertNotIn("/product-reviews/B08MLGXSPH/?", url)
+        self.assertIn("pageNumber=2", url)
+
     def test_main_builds_review_topics_from_public_reviews(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             base = Path(temp_dir)

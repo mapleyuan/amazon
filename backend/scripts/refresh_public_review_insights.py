@@ -110,7 +110,7 @@ def _load_asins_from_daily(snapshot_date: str, limit: int) -> list[str]:
 def _review_page_url(site: str, asin: str, page_number: int) -> str:
     base = SITE_BASE[site].rstrip("/")
     return (
-        f"{base}/product-reviews/{asin}/"
+        f"{base}/product-reviews/{asin}"
         f"?reviewerType=all_reviews&sortBy=recent&pageNumber={max(1, int(page_number))}"
     )
 
