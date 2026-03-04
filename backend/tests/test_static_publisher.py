@@ -75,12 +75,52 @@ class StaticPublisherTests(unittest.TestCase):
             available_dates=["2026-03-01"],
             retention_days=30,
             source="manual",
+            last_failure={
+                "at": "2026-03-02T12:00:00Z",
+                "code": "no_rows",
+                "reason": "crawl returned no rows",
+                "crawl_source": "jina_ai",
+                "sites": ["amazon.com"],
+                "boards": ["best_sellers"],
+                "category_keywords": [],
+                "category_urls": ["https://example.com/cat"],
+            },
         )
 
         self.assertEqual(manifest["status"], "stale")
         self.assertEqual(manifest["last_success_date"], "2026-03-01")
         self.assertEqual(manifest["message"], "crawl failed")
         self.assertEqual(manifest["source"], "manual")
+        self.assertEqual(manifest["last_failure"]["code"], "no_rows")
+        self.assertEqual(manifest["last_failure"]["crawl_source"], "jina_ai")
+        self.assertEqual(manifest["last_failure"]["boards"], ["best_sellers"])
+
+    def test_build_manifest_success_clears_last_failure(self) -> None:
+        from app.static_data.publisher import build_manifest
+
+        previous = {
+            "last_success_date": "2026-03-01",
+            "last_success_at": "2026-03-01T12:00:00Z",
+            "last_failure": {
+                "at": "2026-03-01T13:00:00Z",
+                "code": "no_rows",
+                "reason": "crawl returned no rows",
+            },
+        }
+
+        manifest = build_manifest(
+            generated_at="2026-03-02T12:00:00Z",
+            status="success",
+            message="",
+            previous=previous,
+            available_dates=["2026-03-02", "2026-03-01"],
+            retention_days=30,
+            source="auto",
+            last_failure=None,
+        )
+
+        self.assertEqual(manifest["status"], "success")
+        self.assertIsNone(manifest["last_failure"])
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ from __future__ import annotations
 from argparse import ArgumentParser
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import sys
 from typing import Any
@@ -168,6 +169,45 @@ def _contains_mock_rows(rows: list[dict[str, Any]]) -> bool:
     return False
 
 
+def _failure_code_from_exception(exc: Exception) -> str:
+    message = str(exc)
+    if "crawl returned no rows" in message:
+        return "no_rows"
+    if "mock rows detected" in message:
+        return "mock_rows"
+    return "crawl_error"
+
+
+def _build_failure_context(
+    *,
+    sites: list[str],
+    boards: list[str],
+    category_keywords: list[str],
+    category_urls: list[str],
+) -> dict[str, Any]:
+    crawl_source = str(os.environ.get("AMAZON_CRAWL_SOURCE", "direct") or "direct").strip() or "direct"
+    return {
+        "crawl_source": crawl_source,
+        "sites": list(sites),
+        "boards": list(boards),
+        "category_keywords": list(category_keywords),
+        "category_urls": list(category_urls),
+    }
+
+
+def _format_failure_message(reason: str, context: dict[str, Any]) -> str:
+    sites = ",".join(context.get("sites", [])) or "-"
+    boards = ",".join(context.get("boards", [])) or "-"
+    keywords = ",".join(context.get("category_keywords", [])) or "-"
+    url_count = len(context.get("category_urls", []))
+    crawl_source = context.get("crawl_source", "direct")
+    return (
+        f"{reason} | source={crawl_source}"
+        f" | sites={sites} | boards={boards}"
+        f" | category_keywords={keywords} | category_urls={url_count}"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = ArgumentParser(description="Publish static daily data for GitHub Pages")
     parser.add_argument("--retention-days", type=int, default=DEFAULT_RETENTION_DAYS)
@@ -217,6 +257,7 @@ def main(argv: list[str] | None = None) -> int:
     status = "success"
     message = ""
     available_dates = existing_dates
+    last_failure: dict[str, Any] | None = None
 
     try:
         snapshot_date, rows = crawl_all_rows_for_targets(
@@ -242,7 +283,21 @@ def main(argv: list[str] | None = None) -> int:
         _cleanup_old_daily_files(available_dates)
     except Exception as exc:  # noqa: BLE001
         status = "stale"
-        message = str(exc)
+        failure_code = _failure_code_from_exception(exc)
+        failure_reason = str(exc)
+        failure_context = _build_failure_context(
+            sites=sites,
+            boards=boards,
+            category_keywords=category_keywords,
+            category_urls=category_urls,
+        )
+        message = _format_failure_message(failure_reason, failure_context)
+        last_failure = {
+            "at": generated_at,
+            "code": failure_code,
+            "reason": failure_reason,
+            **failure_context,
+        }
         available_dates = merge_available_dates(
             existing=existing_dates,
             new_date=None,
@@ -258,6 +313,7 @@ def main(argv: list[str] | None = None) -> int:
         available_dates=available_dates,
         retention_days=retention_days,
         source=args.source,
+        last_failure=last_failure,
     )
     _write_json(_manifest_path(), manifest)
     if args.strict and status != "success":

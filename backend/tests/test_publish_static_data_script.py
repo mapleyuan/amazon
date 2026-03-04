@@ -174,6 +174,43 @@ class PublishStaticDataScriptTests(unittest.TestCase):
                 manifest_text = (base / "data" / "manifest.json").read_text(encoding="utf-8")
                 self.assertIn('"status": "stale"', manifest_text)
                 self.assertIn("mock rows detected", manifest_text)
+                self.assertIn('"last_failure"', manifest_text)
+                self.assertIn('"code": "mock_rows"', manifest_text)
+
+    def test_main_no_rows_writes_failure_context_into_manifest(self) -> None:
+        from scripts import publish_static_data
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            with patch.object(publish_static_data, "WEB_DATA_DIR", base / "data"):
+                with patch.object(
+                    publish_static_data,
+                    "crawl_all_rows_for_targets",
+                    return_value=("2026-03-02", []),
+                ):
+                    with patch.dict(publish_static_data.os.environ, {"AMAZON_CRAWL_SOURCE": "jina_ai"}, clear=False):
+                        code = publish_static_data.main(
+                            [
+                                "--strict",
+                                "--sites",
+                                "amazon.com",
+                                "--boards",
+                                "best_sellers",
+                                "--category-keywords",
+                                "candlestick,candle",
+                            ]
+                        )
+
+                self.assertEqual(code, 1)
+                manifest = json.loads((base / "data" / "manifest.json").read_text(encoding="utf-8"))
+                self.assertEqual(manifest["status"], "stale")
+                self.assertEqual(manifest["last_failure"]["code"], "no_rows")
+                self.assertEqual(manifest["last_failure"]["crawl_source"], "jina_ai")
+                self.assertEqual(manifest["last_failure"]["sites"], ["amazon.com"])
+                self.assertEqual(manifest["last_failure"]["boards"], ["best_sellers"])
+                self.assertEqual(manifest["last_failure"]["category_keywords"], ["candlestick", "candle"])
+                self.assertIn("crawl returned no rows", manifest["message"])
+                self.assertIn("source=jina_ai", manifest["message"])
 
     def test_main_parses_cli_args_when_argv_is_none(self) -> None:
         from scripts import publish_static_data

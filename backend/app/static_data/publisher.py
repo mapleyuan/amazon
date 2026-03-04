@@ -104,6 +104,7 @@ def build_manifest(
     available_dates: list[str],
     retention_days: int,
     source: str,
+    last_failure: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     previous_manifest = previous or {}
     latest_date = available_dates[0] if available_dates else None
@@ -115,6 +116,14 @@ def build_manifest(
         last_success_date = previous_manifest.get("last_success_date")
         last_success_at = previous_manifest.get("last_success_at")
 
+    if status == "success":
+        manifest_last_failure = None
+    elif last_failure is not None:
+        manifest_last_failure = last_failure
+    else:
+        previous_failure = previous_manifest.get("last_failure")
+        manifest_last_failure = previous_failure if isinstance(previous_failure, dict) else None
+
     return {
         "generated_at": generated_at,
         "last_attempt_at": generated_at,
@@ -123,6 +132,7 @@ def build_manifest(
         "status": status,
         "source": source,
         "message": message,
+        "last_failure": manifest_last_failure,
         "retention_days": int(retention_days),
         "available_dates": available_dates,
         "default_filters": DEFAULT_FILTERS,
