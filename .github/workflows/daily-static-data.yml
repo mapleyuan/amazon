@@ -68,6 +68,14 @@ jobs:
             --asin-limit 8 \
             --pages-per-asin 2
 
+      - name: Build public keyword insights (free fallback)
+        run: |
+          cd backend
+          python3 scripts/refresh_public_keyword_insights.py \
+            --snapshot-date "$(date -u +%F)" \
+            --site amazon.com \
+            --keyword-limit 20
+
       - name: Commit and push data updates
         run: |
           if git diff --quiet -- backend/app/web/data; then

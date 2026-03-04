@@ -57,6 +57,15 @@ python3 scripts/refresh_public_review_insights.py --snapshot-date 2026-03-03 --s
 
 - `backend/app/web/data/insights/YYYY-MM-DD.json`（`source=public_reviews`）
 
+另外，免费关键词流量/转化近似可用：
+
+```bash
+cd backend
+python3 scripts/refresh_public_keyword_insights.py --snapshot-date 2026-03-03 --site amazon.com
+```
+
+该脚本会基于当日商品标题自动生成候选词，抓取公开搜索结果页并写入关键词洞察（`source` 会带上 `public_search_keywords`）。
+
 ## 本地手动兜底更新
 
 当自动抓取失败时，可在本地手动执行并 push：

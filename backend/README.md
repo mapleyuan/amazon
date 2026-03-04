@@ -149,3 +149,30 @@ Source label in output:
 
 - `public_reviews`: only public review-derived insights
 - `mixed_reports_public_reviews`: merged official report payload + public review topics
+
+## Refresh public keyword insights (free fallback, no paid API)
+
+Build non-bid keyword traffic/conversion proxies from public Amazon search pages:
+
+```bash
+cd backend
+python3 scripts/refresh_public_keyword_insights.py \
+  --snapshot-date 2026-03-03 \
+  --site amazon.com \
+  --keyword-limit 20
+```
+
+Behavior:
+
+- Derive candidate keywords from daily product titles (or pass `--keywords`)
+- Fetch `/s?k=<keyword>` pages
+- Parse result-count, sponsored marker count, first-page ASIN list
+- Build keyword rows with proxy fields:
+  - `impressions`: parsed result count
+  - `cvr`: first-page tracked-ASIN overlap ratio
+  - `top_asin_overlap`: overlap count
+
+Source label in output:
+
+- `public_search_keywords`: keyword rows from public search pages
+- can be merged with other sources, e.g. `official_reports+public_reviews+public_search_keywords`

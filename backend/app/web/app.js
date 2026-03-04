@@ -430,8 +430,9 @@ function buildReviewInsightLinesFromOfficial(officialPayload, asin) {
   if (!selected) return [];
   const source = String(officialPayload?.source || "").trim();
   const sampleReviews = parseNumber(selected.sample_reviews);
+  const sourceTags = parseInsightsSourceTags(source);
   const sourceLabel =
-    source === "public_reviews" || source === "mixed_reports_public_reviews"
+    sourceTags.has("public_reviews")
       ? "公开评论抓取"
       : "官方评论主题";
   const sampleLine =
@@ -445,13 +446,47 @@ function buildReviewInsightLinesFromOfficial(officialPayload, asin) {
   ].filter(Boolean);
 }
 
-function formatInsightsSourceLabel(source) {
+function parseInsightsSourceTags(source) {
   const value = String(source || "").trim();
-  if (!value) return "估算模式";
-  if (value === "official_reports") return "官方报表";
-  if (value === "public_reviews") return "公开评论抓取";
-  if (value === "mixed_reports_public_reviews") return "官方报表 + 公开评论";
-  return value;
+  if (!value) return new Set();
+  if (value === "mixed_reports_public_reviews") {
+    return new Set(["official_reports", "public_reviews"]);
+  }
+  if (value.includes("+")) {
+    return new Set(
+      value
+        .split("+")
+        .map((part) => part.trim())
+        .filter(Boolean),
+    );
+  }
+  return new Set([value]);
+}
+
+function formatInsightsSourceLabel(source) {
+  const tags = parseInsightsSourceTags(source);
+  if (!tags.size) return "估算模式";
+
+  const labels = [];
+  if (tags.has("official_reports")) labels.push("官方报表");
+  if (tags.has("public_reviews")) labels.push("公开评论抓取");
+  if (tags.has("public_search_keywords")) labels.push("公开搜索关键词");
+
+  if (labels.length) return labels.join(" + ");
+  return String(source || "").trim();
+}
+
+function isPublicSearchKeywordRows(payload) {
+  const rows = Array.isArray(payload?.keywords) ? payload.keywords : [];
+  if (!rows.length) return false;
+  return rows.some((row) => {
+    if (!row || typeof row !== "object") return false;
+    return (
+      Object.prototype.hasOwnProperty.call(row, "top_asin_overlap") ||
+      Object.prototype.hasOwnProperty.call(row, "top_asin_count") ||
+      Object.prototype.hasOwnProperty.call(row, "sponsored_count")
+    );
+  });
 }
 
 function buildKeywordInsightRowsFromOfficial(officialPayload) {
@@ -707,6 +742,8 @@ async function runCompetitiveInsights() {
     const officialMonthlyRows = buildMonthlySalesRowsFromOfficial(officialPayload, selectedAsin);
     const officialStyleLines = buildStyleTrendLinesFromOfficial(officialPayload);
 
+    const keywordFromPublicSearch = isPublicSearchKeywordRows(officialPayload);
+
     renderInsightList(
       "reviewInsights",
       officialReviewLines.length ? officialReviewLines : buildReviewInsightLines(filteredItems),
@@ -716,14 +753,22 @@ async function runCompetitiveInsights() {
       officialKeywordInsights.trafficRows.length
         ? officialKeywordInsights.trafficRows
         : estimatedKeywordInsights.trafficRows,
-      officialKeywordInsights.trafficRows.length ? "官方曝光" : "估算流量",
+      officialKeywordInsights.trafficRows.length
+        ? keywordFromPublicSearch
+          ? "搜索结果量"
+          : "官方曝光"
+        : "估算流量",
     );
     renderKeywordMetrics(
       "conversionKeywords",
       officialKeywordInsights.conversionRows.length
         ? officialKeywordInsights.conversionRows
         : estimatedKeywordInsights.conversionRows,
-      officialKeywordInsights.conversionRows.length ? "官方转化率" : "转化分",
+      officialKeywordInsights.conversionRows.length
+        ? keywordFromPublicSearch
+          ? "匹配率"
+          : "官方转化率"
+        : "转化分",
     );
     renderMonthlySalesInsights(
       officialMonthlyRows.length ? officialMonthlyRows : buildMonthlySalesRows(historyRows, selectedAsin),
