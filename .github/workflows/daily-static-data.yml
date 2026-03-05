@@ -98,13 +98,19 @@ jobs:
             --lookback-days 30
 
       - name: Build public review insights (free fallback)
+        env:
+          AMAZON_CRAWL_SOURCE: direct
+          AMAZON_REVIEW_PLAYWRIGHT: "1"
         run: |
           cd backend
+          python3 -m pip install --quiet --upgrade pip
+          python3 -m pip install --quiet playwright
+          python3 -m playwright install --with-deps chromium
           python3 scripts/refresh_public_review_insights.py \
             --snapshot-date "$(date -u +%F)" \
             --site amazon.com \
             --asin-limit 8 \
-            --pages-per-asin 2 \
+            --pages-per-asin 1 \
             --strict-review-topics
 
       - name: Build public keyword insights (free fallback)

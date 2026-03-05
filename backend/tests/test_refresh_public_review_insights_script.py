@@ -16,6 +16,17 @@ class RefreshPublicReviewInsightsScriptTests(unittest.TestCase):
         self.assertNotIn("/product-reviews/B08MLGXSPH/?", url)
         self.assertIn("pageNumber=2", url)
 
+    def test_review_source_candidates_include_playwright_when_enabled(self) -> None:
+        with patch.dict(
+            refresh_public_review_insights.os.environ,
+            {"AMAZON_CRAWL_SOURCE": "direct", "AMAZON_REVIEW_PLAYWRIGHT": "1"},
+            clear=False,
+        ):
+            candidates = refresh_public_review_insights._review_source_candidates()
+        self.assertEqual(candidates[0], "direct")
+        self.assertIn("playwright", candidates)
+        self.assertIn("jina_ai", candidates)
+
     def test_main_builds_review_topics_from_public_reviews(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             base = Path(temp_dir)
@@ -333,6 +344,59 @@ To discuss automated access to Amazon data please contact api-services-support@a
             diagnostics = payload["review_fetch_diagnostics"][0]
             self.assertEqual(diagnostics["status"], "failed")
             self.assertEqual(diagnostics["failure_reason"], "parsed_zero")
+
+    def test_main_treats_page_two_404_as_non_fatal_when_page_one_has_reviews(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            web_data = base / "web-data"
+            daily_dir = web_data / "daily"
+            insights_dir = web_data / "insights"
+            daily_dir.mkdir(parents=True, exist_ok=True)
+            insights_dir.mkdir(parents=True, exist_ok=True)
+
+            (daily_dir / "2026-03-03.json").write_text(
+                json.dumps({"snapshot_date": "2026-03-03", "items": [{"asin": "B000000001", "rank": 1}]}),
+                encoding="utf-8",
+            )
+
+            page_one = """
+1. [5.0 out of 5 stars](https://www.amazon.com/gp/customer-reviews/R1) Great quality
+Sturdy and elegant.
+"""
+
+            class _Fake404Error(RuntimeError):
+                def __init__(self, url: str) -> None:
+                    super().__init__("HTTP Error 404: Not Found")
+                    self.code = 404
+                    self.url = url
+
+            def _fake_fetch(url: str, **kwargs: object) -> str:
+                if "pageNumber=2" in url:
+                    raise _Fake404Error(url)
+                return page_one
+
+            with patch.object(refresh_public_review_insights, "WEB_DATA_DIR", web_data):
+                with patch.object(refresh_public_review_insights, "fetch_html", side_effect=_fake_fetch):
+                    code = refresh_public_review_insights.main(
+                        [
+                            "--snapshot-date",
+                            "2026-03-03",
+                            "--asin-limit",
+                            "1",
+                            "--pages-per-asin",
+                            "2",
+                            "--insights-output-dir",
+                            str(insights_dir),
+                        ]
+                    )
+
+            self.assertEqual(code, 0)
+            payload = json.loads((insights_dir / "2026-03-03.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["stats"]["review_topic_asins"], 1)
+            diagnostics = payload["review_fetch_diagnostics"][0]
+            self.assertEqual(diagnostics["status"], "ok")
+            self.assertEqual(diagnostics["entries_parsed"], 1)
+            self.assertEqual(diagnostics["failure_reason"], None)
 
 
 if __name__ == "__main__":

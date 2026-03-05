@@ -38,6 +38,7 @@ Static web UI lives in `backend/app/web/` and is split into:
 - `AMAZON_CRAWL_CATEGORY_LIMIT`: category crawl limit per site+board (default `20`)
 - `AMAZON_CRAWL_SOURCE`: crawl source strategy (`direct`, `jina_ai`, or `proxy_template`, default `direct`)
 - `AMAZON_CRAWL_PROXY_TEMPLATE`: used when `AMAZON_CRAWL_SOURCE=proxy_template`; must contain `{url}`
+- `AMAZON_REVIEW_PLAYWRIGHT`: `1` enables browser fallback source (`playwright`) for review pages.
 
 ## Publish static data with fine-grained category targeting
 
@@ -159,6 +160,16 @@ Behavior:
 - Build per-ASIN diagnostics:
   - `review_fetch_diagnostics` (pages attempted/succeeded, parsed entries, per-page errors)
 - Write/merge into `app/web/data/insights/<date>.json`
+
+Optional browser fallback for tougher anti-bot pages:
+
+```bash
+cd backend
+python3 -m pip install playwright
+python3 -m playwright install chromium
+AMAZON_CRAWL_SOURCE=direct AMAZON_REVIEW_PLAYWRIGHT=1 \
+python3 scripts/refresh_public_review_insights.py --snapshot-date 2026-03-03
+```
 
 Strict review-topic gate:
 

@@ -14,8 +14,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.crawler.adapters import SITE_BASE  # noqa: E402
-from app.crawler.client import fetch_html  # noqa: E402
+from app.crawler.adapters import ACCEPT_LANG, SITE_BASE  # noqa: E402
+from app.crawler.client import DEFAULT_UA, fetch_html  # noqa: E402
 from app.official_insights.builder import build_official_insights_payload, utc_now_iso  # noqa: E402
 from app.official_insights.public_reviews import (  # noqa: E402
     build_review_topic_summary,
@@ -130,6 +130,14 @@ def _review_source_candidates() -> list[str]:
     for source in candidates:
         if source and source not in deduped:
             deduped.append(source)
+
+    if os.environ.get("AMAZON_REVIEW_PLAYWRIGHT", "0") == "1":
+        if "playwright" not in deduped:
+            if "direct" in deduped:
+                insert_at = deduped.index("direct") + 1
+                deduped.insert(insert_at, "playwright")
+            else:
+                deduped.append("playwright")
     return deduped
 
 
@@ -155,6 +163,7 @@ def _classify_failure_reason(
     *,
     has_rows: bool,
     blocked_pages: int,
+    page_not_found_pages: int,
     pages_succeeded: int,
     network_errors: int,
 ) -> str | None:
@@ -162,6 +171,8 @@ def _classify_failure_reason(
         return None
     if blocked_pages > 0:
         return "blocked_page"
+    if page_not_found_pages > 0 and pages_succeeded <= page_not_found_pages:
+        return "page_not_found"
     if pages_succeeded <= 0 and network_errors > 0:
         return "network_error"
     if pages_succeeded > 0:
@@ -182,7 +193,61 @@ def _external_review_failures_only(diagnostics: list[dict[str, Any]]) -> bool:
 
     if not reasons:
         return False
-    return reasons.issubset({"blocked_page", "network_error"})
+    return reasons.issubset({"blocked_page", "network_error", "page_not_found"})
+
+
+def _fetch_review_page_with_playwright(
+    url: str,
+    *,
+    site: str,
+    timeout: int,
+    max_bytes: int,
+) -> str:
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError("playwright missing: pip install playwright && playwright install chromium") from exc
+
+    lang = ACCEPT_LANG.get(site, "en-US,en;q=0.9")
+    locale = lang.split(",")[0].split(";")[0].strip() or "en-US"
+    timeout_ms = max(5, int(timeout)) * 1000
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+            ],
+        )
+        context = browser.new_context(
+            user_agent=DEFAULT_UA,
+            locale=locale,
+            extra_http_headers={"Accept-Language": lang},
+        )
+        page = context.new_page()
+        page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+        page.wait_for_timeout(1200)
+        content = page.content()
+        context.close()
+        browser.close()
+    return str(content or "")[: max(1, int(max_bytes))]
+
+
+def _fetch_review_page(url: str, *, site: str, source: str, timeout: int, max_bytes: int) -> str:
+    normalized = str(source or "").strip().lower()
+    if normalized == "playwright":
+        return _fetch_review_page_with_playwright(url, site=site, timeout=timeout, max_bytes=max_bytes)
+    with _temporary_crawl_source(normalized):
+        return fetch_html(url, site=site, timeout=timeout, max_bytes=max_bytes)
+
+
+def _is_not_found_error(exc: Exception) -> bool:
+    code = getattr(exc, "code", None)
+    if isinstance(code, int):
+        return code == 404
+    text = str(exc)
+    return "HTTP Error 404" in text or "404" in text
 
 
 def _collect_review_entries_for_asin(site: str, asin: str, pages_per_asin: int) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -190,6 +255,7 @@ def _collect_review_entries_for_asin(site: str, asin: str, pages_per_asin: int) 
     pages_attempted = 0
     pages_succeeded = 0
     blocked_pages = 0
+    page_not_found_pages = 0
     network_errors = 0
     errors: list[str] = []
     page_stats: list[dict[str, Any]] = []
@@ -211,11 +277,18 @@ def _collect_review_entries_for_asin(site: str, asin: str, pages_per_asin: int) 
                 "page_issue": None,
             }
             try:
-                with _temporary_crawl_source(source):
-                    text = fetch_html(url, site=site, timeout=20, max_bytes=800_000)
+                text = _fetch_review_page(url, site=site, source=source, timeout=20, max_bytes=800_000)
                 page_fetch_ok = True
             except Exception as exc:  # noqa: BLE001
                 error_text = f"{type(exc).__name__}: {exc}"
+                if _is_not_found_error(exc):
+                    attempt["error"] = error_text
+                    attempt["page_issue"] = "page_not_found"
+                    source_attempts.append(attempt)
+                    if page <= 1:
+                        errors.append(f"page={page} source={source}: {error_text}")
+                    continue
+
                 attempt["error"] = error_text
                 attempt["page_issue"] = "network_error"
                 source_attempts.append(attempt)
@@ -268,10 +341,15 @@ def _collect_review_entries_for_asin(site: str, asin: str, pages_per_asin: int) 
             continue
 
         final_issue = "parsed_zero"
-        if all(str(item.get("page_issue")) == "network_error" for item in source_attempts):
+        if all(str(item.get("page_issue")) == "page_not_found" for item in source_attempts):
+            final_issue = "page_not_found"
+        elif all(str(item.get("page_issue")) == "network_error" for item in source_attempts):
             final_issue = "network_error"
         elif any(str(item.get("page_issue")) == "blocked_page" for item in source_attempts):
             final_issue = "blocked_page"
+
+        if final_issue == "page_not_found":
+            page_not_found_pages += 1
 
         page_stats.append(
             {
@@ -283,12 +361,15 @@ def _collect_review_entries_for_asin(site: str, asin: str, pages_per_asin: int) 
                 "sources_tried": source_attempts,
             }
         )
+        if page == 1 and final_issue in {"blocked_page", "page_not_found"}:
+            break
         if page > 1:
             break
 
     failure_reason = _classify_failure_reason(
         has_rows=bool(rows),
         blocked_pages=blocked_pages,
+        page_not_found_pages=page_not_found_pages,
         pages_succeeded=pages_succeeded,
         network_errors=network_errors,
     )
@@ -308,6 +389,8 @@ def _collect_review_entries_for_asin(site: str, asin: str, pages_per_asin: int) 
     if not rows:
         if failure_reason == "blocked_page":
             diagnostics["errors"] = errors or ["blocked page detected"]
+        elif failure_reason == "page_not_found":
+            diagnostics["errors"] = errors or ["review page not found"]
         elif failure_reason == "parsed_zero":
             diagnostics["errors"] = errors or ["no review entries parsed"]
         elif not errors:
