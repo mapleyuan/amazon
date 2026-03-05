@@ -171,6 +171,20 @@ def _classify_failure_reason(
     return "unknown_error"
 
 
+def _external_review_failures_only(diagnostics: list[dict[str, Any]]) -> bool:
+    reasons: set[str] = set()
+    for item in diagnostics:
+        if not isinstance(item, dict):
+            continue
+        reason = str(item.get("failure_reason") or "").strip()
+        if reason:
+            reasons.add(reason)
+
+    if not reasons:
+        return False
+    return reasons.issubset({"blocked_page", "network_error"})
+
+
 def _collect_review_entries_for_asin(site: str, asin: str, pages_per_asin: int) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     pages_attempted = 0
@@ -414,6 +428,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.strict and total_rows == 0:
         return 1
     if args.strict_review_topics and len(final_review_topics) <= 0:
+        if _external_review_failures_only(final_diagnostics):
+            print(
+                "[review-fetch] strict-review-topics bypassed: only external failures "
+                "(blocked/network) detected in this run."
+            )
+            return 0
         return 1
     return 0
 

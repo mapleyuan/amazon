@@ -140,7 +140,7 @@ Broke quickly.
             self.assertEqual(payload["stats"]["review_topic_asins"], 1)
             self.assertEqual(payload["stats"]["review_topic_failed_asins"], 0)
 
-    def test_main_strict_review_topics_fails_with_diagnostics_when_no_reviews(self) -> None:
+    def test_main_strict_review_topics_allows_external_failures_when_no_reviews(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             base = Path(temp_dir)
             web_data = base / "web-data"
@@ -189,7 +189,7 @@ Broke quickly.
                         ]
                     )
 
-            self.assertEqual(code, 1)
+            self.assertEqual(code, 0)
             payload = json.loads((insights_dir / "2026-03-03.json").read_text(encoding="utf-8"))
             self.assertEqual(payload["stats"]["review_topic_asins"], 0)
             self.assertEqual(payload["stats"]["review_topic_failed_asins"], 1)
@@ -255,7 +255,7 @@ Sturdy and elegant.
             self.assertEqual(diagnostics["pages"][0]["source"], "direct")
             self.assertEqual(diagnostics["pages"][0]["sources_tried"][0]["page_issue"], "blocked_page")
 
-    def test_main_reports_blocked_failure_reason(self) -> None:
+    def test_main_reports_blocked_failure_reason_but_does_not_fail_strict(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             base = Path(temp_dir)
             web_data = base / "web-data"
@@ -290,11 +290,49 @@ To discuss automated access to Amazon data please contact api-services-support@a
                         ]
                     )
 
-            self.assertEqual(code, 1)
+            self.assertEqual(code, 0)
             payload = json.loads((insights_dir / "2026-03-03.json").read_text(encoding="utf-8"))
             diagnostics = payload["review_fetch_diagnostics"][0]
             self.assertEqual(diagnostics["status"], "failed")
             self.assertEqual(diagnostics["failure_reason"], "blocked_page")
+
+    def test_main_strict_review_topics_still_fails_on_parsed_zero(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            web_data = base / "web-data"
+            daily_dir = web_data / "daily"
+            insights_dir = web_data / "insights"
+            daily_dir.mkdir(parents=True, exist_ok=True)
+            insights_dir.mkdir(parents=True, exist_ok=True)
+
+            (daily_dir / "2026-03-03.json").write_text(
+                json.dumps({"snapshot_date": "2026-03-03", "items": [{"asin": "B000000001", "rank": 1}]}),
+                encoding="utf-8",
+            )
+
+            parsed_zero_text = "Customer reviews content loaded, but without parseable rating rows."
+
+            with patch.object(refresh_public_review_insights, "WEB_DATA_DIR", web_data):
+                with patch.object(refresh_public_review_insights, "fetch_html", return_value=parsed_zero_text):
+                    code = refresh_public_review_insights.main(
+                        [
+                            "--snapshot-date",
+                            "2026-03-03",
+                            "--asin-limit",
+                            "1",
+                            "--pages-per-asin",
+                            "1",
+                            "--strict-review-topics",
+                            "--insights-output-dir",
+                            str(insights_dir),
+                        ]
+                    )
+
+            self.assertEqual(code, 1)
+            payload = json.loads((insights_dir / "2026-03-03.json").read_text(encoding="utf-8"))
+            diagnostics = payload["review_fetch_diagnostics"][0]
+            self.assertEqual(diagnostics["status"], "failed")
+            self.assertEqual(diagnostics["failure_reason"], "parsed_zero")
 
 
 if __name__ == "__main__":
