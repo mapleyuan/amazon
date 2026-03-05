@@ -398,6 +398,78 @@ Sturdy and elegant.
             self.assertEqual(diagnostics["entries_parsed"], 1)
             self.assertEqual(diagnostics["failure_reason"], None)
 
+    def test_main_strict_bypasses_mixed_page_not_found_and_parsed_zero(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            web_data = base / "web-data"
+            daily_dir = web_data / "daily"
+            insights_dir = web_data / "insights"
+            daily_dir.mkdir(parents=True, exist_ok=True)
+            insights_dir.mkdir(parents=True, exist_ok=True)
+
+            (daily_dir / "2026-03-03.json").write_text(
+                json.dumps({"snapshot_date": "2026-03-03", "items": [{"asin": "B000000001", "rank": 1}]}),
+                encoding="utf-8",
+            )
+            (insights_dir / "2026-03-03.json").write_text(
+                json.dumps(
+                    {
+                        "snapshot_date": "2026-03-03",
+                        "source": "public_search_keywords",
+                        "keywords": [{"keyword": "candlestick", "impressions": 100}],
+                        "monthly_sales": [],
+                        "review_topics": [],
+                        "style_trends": [],
+                        "stats": {
+                            "keyword_rows": 1,
+                            "monthly_sales_rows": 0,
+                            "review_topic_asins": 0,
+                            "style_trend_rows": 0,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            class _Fake404Error(RuntimeError):
+                def __init__(self, url: str) -> None:
+                    super().__init__("HTTP Error 404: Not Found")
+                    self.code = 404
+                    self.url = url
+
+            def _fake_fetch(url: str, **kwargs: object) -> str:
+                source = str(refresh_public_review_insights.os.environ.get("AMAZON_CRAWL_SOURCE") or "")
+                if source == "direct":
+                    raise _Fake404Error(url)
+                return "customer reviews section loaded but no parseable rating line"
+
+            with patch.object(refresh_public_review_insights, "WEB_DATA_DIR", web_data):
+                with patch.dict(
+                    refresh_public_review_insights.os.environ,
+                    {"AMAZON_CRAWL_SOURCE": "direct", "AMAZON_REVIEW_PLAYWRIGHT": "0"},
+                    clear=False,
+                ):
+                    with patch.object(refresh_public_review_insights, "fetch_html", side_effect=_fake_fetch):
+                        code = refresh_public_review_insights.main(
+                            [
+                                "--snapshot-date",
+                                "2026-03-03",
+                                "--asin-limit",
+                                "1",
+                                "--pages-per-asin",
+                                "1",
+                                "--strict-review-topics",
+                                "--insights-output-dir",
+                                str(insights_dir),
+                            ]
+                        )
+
+            self.assertEqual(code, 0)
+            payload = json.loads((insights_dir / "2026-03-03.json").read_text(encoding="utf-8"))
+            diagnostics = payload["review_fetch_diagnostics"][0]
+            self.assertEqual(diagnostics["status"], "failed")
+            self.assertEqual(diagnostics["failure_reason"], "page_not_found")
+
 
 if __name__ == "__main__":
     unittest.main()

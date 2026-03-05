@@ -340,13 +340,14 @@ def _collect_review_entries_for_asin(site: str, asin: str, pages_per_asin: int) 
             )
             continue
 
+        issues = [str(item.get("page_issue") or "") for item in source_attempts]
         final_issue = "parsed_zero"
-        if all(str(item.get("page_issue")) == "page_not_found" for item in source_attempts):
-            final_issue = "page_not_found"
-        elif all(str(item.get("page_issue")) == "network_error" for item in source_attempts):
-            final_issue = "network_error"
-        elif any(str(item.get("page_issue")) == "blocked_page" for item in source_attempts):
+        if any(issue == "blocked_page" for issue in issues):
             final_issue = "blocked_page"
+        elif any(issue == "page_not_found" for issue in issues):
+            final_issue = "page_not_found"
+        elif issues and all(issue == "network_error" for issue in issues):
+            final_issue = "network_error"
 
         if final_issue == "page_not_found":
             page_not_found_pages += 1
@@ -514,7 +515,7 @@ def main(argv: list[str] | None = None) -> int:
         if _external_review_failures_only(final_diagnostics):
             print(
                 "[review-fetch] strict-review-topics bypassed: only external failures "
-                "(blocked/network) detected in this run."
+                "(blocked/network/page_not_found) detected in this run."
             )
             return 0
         return 1
