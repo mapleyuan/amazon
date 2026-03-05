@@ -122,28 +122,48 @@ def _product_page_url(site: str, asin: str) -> str:
 
 
 def _review_source_candidates() -> list[str]:
-    primary = str(os.environ.get("AMAZON_CRAWL_SOURCE", "direct") or "direct").strip().lower() or "direct"
-    candidates: list[str] = [primary]
-
-    if primary == "jina_ai":
-        candidates.append("direct")
-    elif primary == "direct":
-        candidates.append("jina_ai")
+    custom_raw = str(os.environ.get("AMAZON_REVIEW_SOURCE_CANDIDATES", "") or "").strip()
+    if custom_raw:
+        requested = [part.strip().lower() for part in custom_raw.split(",") if part.strip()]
     else:
-        candidates.append("direct")
+        primary = str(os.environ.get("AMAZON_CRAWL_SOURCE", "direct") or "direct").strip().lower() or "direct"
+        requested = [primary]
+        if primary == "jina_ai":
+            requested.extend(["direct", "proxy_template"])
+        elif primary == "proxy_template":
+            requested.extend(["direct", "jina_ai"])
+        else:
+            requested.extend(["jina_ai", "proxy_template"])
+
+    valid_sources = {"direct", "jina_ai", "proxy_template", "playwright"}
+    template = str(os.environ.get("AMAZON_CRAWL_PROXY_TEMPLATE", "") or "").strip()
+    has_proxy_template = bool(template and "{url}" in template)
+    playwright_enabled = os.environ.get("AMAZON_REVIEW_PLAYWRIGHT", "0") == "1"
 
     deduped: list[str] = []
-    for source in candidates:
-        if source and source not in deduped:
+    for source in requested:
+        if source not in valid_sources:
+            continue
+        if source == "proxy_template" and not has_proxy_template:
+            continue
+        if source == "playwright" and not playwright_enabled:
+            continue
+        if source not in deduped:
             deduped.append(source)
 
-    if os.environ.get("AMAZON_REVIEW_PLAYWRIGHT", "0") == "1":
-        if "playwright" not in deduped:
-            if "direct" in deduped:
-                insert_at = deduped.index("direct") + 1
-                deduped.insert(insert_at, "playwright")
-            else:
-                deduped.append("playwright")
+    if not deduped:
+        deduped = ["direct"]
+
+    if playwright_enabled and "playwright" not in deduped:
+        if "direct" in deduped:
+            deduped.insert(deduped.index("direct") + 1, "playwright")
+        else:
+            deduped.append("playwright")
+
+    if "direct" not in deduped:
+        deduped.append("direct")
+    if "jina_ai" not in deduped:
+        deduped.append("jina_ai")
     return deduped
 
 

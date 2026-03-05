@@ -41,6 +41,7 @@ Static web UI lives in `backend/app/web/` and is split into:
 - `AMAZON_CRAWL_COOKIE`: optional raw `Cookie` header for HTTP fetch
 - `AMAZON_CRAWL_REFERER`: optional `Referer` header for HTTP fetch
 - `AMAZON_REVIEW_PLAYWRIGHT`: `1` enables browser fallback source (`playwright`) for review pages.
+- `AMAZON_REVIEW_SOURCE_CANDIDATES`: optional ordered list, e.g. `proxy_template,playwright,direct,jina_ai`
 - `AMAZON_REVIEW_COOKIES_JSON`: optional JSON array passed to Playwright `context.add_cookies`
 - `AMAZON_REVIEW_ALLOW_EXTERNAL_BYPASS`: `0` disables strict-review external-failure bypass (default `1`)
 
@@ -173,6 +174,17 @@ python3 -m pip install playwright
 python3 -m playwright install chromium
 AMAZON_CRAWL_SOURCE=direct AMAZON_REVIEW_PLAYWRIGHT=1 \
 python3 scripts/refresh_public_review_insights.py --snapshot-date 2026-03-03
+```
+
+Cookie header -> Playwright cookies JSON helper:
+
+```bash
+cd backend
+python3 scripts/cookie_header_to_playwright_json.py \
+  --cookie-header "session-id=...; ubid-main=..." \
+  --domain .amazon.com \
+  --secure \
+  --http-only
 ```
 
 Strict review-topic gate:

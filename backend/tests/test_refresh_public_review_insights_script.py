@@ -27,6 +27,22 @@ class RefreshPublicReviewInsightsScriptTests(unittest.TestCase):
         self.assertIn("playwright", candidates)
         self.assertIn("jina_ai", candidates)
 
+    def test_review_source_candidates_custom_order_skips_proxy_without_template(self) -> None:
+        with patch.dict(
+            refresh_public_review_insights.os.environ,
+            {
+                "AMAZON_REVIEW_SOURCE_CANDIDATES": "proxy_template,playwright,direct,jina_ai",
+                "AMAZON_REVIEW_PLAYWRIGHT": "1",
+                "AMAZON_CRAWL_PROXY_TEMPLATE": "",
+            },
+            clear=False,
+        ):
+            candidates = refresh_public_review_insights._review_source_candidates()
+        self.assertNotIn("proxy_template", candidates)
+        self.assertEqual(candidates[0], "playwright")
+        self.assertIn("direct", candidates)
+        self.assertIn("jina_ai", candidates)
+
     def test_main_builds_review_topics_from_public_reviews(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             base = Path(temp_dir)

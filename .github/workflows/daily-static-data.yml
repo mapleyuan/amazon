@@ -154,7 +154,8 @@ jobs:
       - name: Build public review insights (free fallback)
         if: steps.generate.outputs.skip_followups != '1'
         env:
-          AMAZON_CRAWL_SOURCE: direct
+          AMAZON_CRAWL_SOURCE: ${{ secrets.AMAZON_CRAWL_PROXY_TEMPLATE != '' && 'proxy_template' || 'direct' }}
+          AMAZON_REVIEW_SOURCE_CANDIDATES: "proxy_template,playwright,direct,jina_ai"
           AMAZON_REVIEW_PLAYWRIGHT: "1"
           AMAZON_CRAWL_PROXY_TEMPLATE: ${{ secrets.AMAZON_CRAWL_PROXY_TEMPLATE }}
           AMAZON_CRAWL_COOKIE: ${{ secrets.AMAZON_CRAWL_COOKIE }}

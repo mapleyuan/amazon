@@ -77,6 +77,20 @@ python3 scripts/refresh_public_review_insights.py --snapshot-date 2026-03-03 --s
 - `AMAZON_CRAWL_REFERER`（可选）
 - `AMAZON_REVIEW_COOKIES_JSON`（可选，Playwright `context.add_cookies` 格式）
 
+如果你只有浏览器 Cookie 串，可直接转换成 `AMAZON_REVIEW_COOKIES_JSON`：
+
+```bash
+cd backend
+python3 scripts/cookie_header_to_playwright_json.py \
+  --cookie-header "session-id=...; ubid-main=...; i18n-prefs=USD" \
+  --domain .amazon.com \
+  --path / \
+  --secure \
+  --http-only
+```
+
+把输出的一行 JSON 直接粘贴到 GitHub Secret `AMAZON_REVIEW_COOKIES_JSON` 即可。
+
 另外，免费关键词流量/转化近似可用：
 
 ```bash
