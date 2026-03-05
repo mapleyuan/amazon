@@ -10,7 +10,7 @@ from .builder import (
     parse_style_trend_rows_from_json,
 )
 from .sp_api import SPAPIClient, SPAPIConfig, fetch_report_to_file
-from .public_reviews import build_review_topic_summary, parse_review_entries
+from .public_reviews import build_review_topic_summary, parse_review_entries, parse_review_entries_from_product_html
 from .public_keywords import build_public_keyword_rows, extract_candidate_keywords, parse_search_signals
 
 __all__ = [
@@ -28,6 +28,7 @@ __all__ = [
     "fetch_report_to_file",
     "build_review_topic_summary",
     "parse_review_entries",
+    "parse_review_entries_from_product_html",
     "extract_candidate_keywords",
     "parse_search_signals",
     "build_public_keyword_rows",

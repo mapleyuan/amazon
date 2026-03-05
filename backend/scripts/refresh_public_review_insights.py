@@ -21,6 +21,7 @@ from app.official_insights.public_reviews import (  # noqa: E402
     build_review_topic_summary,
     classify_review_page,
     parse_review_entries,
+    parse_review_entries_from_product_html,
 )
 
 WEB_DATA_DIR = PROJECT_ROOT / "app" / "web" / "data"
@@ -113,6 +114,11 @@ def _review_page_url(site: str, asin: str, page_number: int) -> str:
         f"{base}/product-reviews/{asin}"
         f"?reviewerType=all_reviews&sortBy=recent&pageNumber={max(1, int(page_number))}"
     )
+
+
+def _product_page_url(site: str, asin: str) -> str:
+    base = SITE_BASE[site].rstrip("/")
+    return f"{base}/dp/{asin}"
 
 
 def _review_source_candidates() -> list[str]:
@@ -211,6 +217,14 @@ def _fetch_review_page_with_playwright(
     lang = ACCEPT_LANG.get(site, "en-US,en;q=0.9")
     locale = lang.split(",")[0].split(";")[0].strip() or "en-US"
     timeout_ms = max(5, int(timeout)) * 1000
+    cookie_header = str(os.environ.get("AMAZON_CRAWL_COOKIE", "") or "").strip()
+    referer_header = str(os.environ.get("AMAZON_CRAWL_REFERER", "") or "").strip()
+    raw_cookies_json = str(os.environ.get("AMAZON_REVIEW_COOKIES_JSON", "") or "").strip()
+    extra_headers = {"Accept-Language": lang}
+    if cookie_header:
+        extra_headers["Cookie"] = cookie_header
+    if referer_header:
+        extra_headers["Referer"] = referer_header
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch(
@@ -223,8 +237,15 @@ def _fetch_review_page_with_playwright(
         context = browser.new_context(
             user_agent=DEFAULT_UA,
             locale=locale,
-            extra_http_headers={"Accept-Language": lang},
+            extra_http_headers=extra_headers,
         )
+        if raw_cookies_json:
+            try:
+                cookies = json.loads(raw_cookies_json)
+                if isinstance(cookies, list):
+                    context.add_cookies(cookies)
+            except Exception:  # noqa: BLE001
+                pass
         page = context.new_page()
         page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
         page.wait_for_timeout(1200)
@@ -367,6 +388,71 @@ def _collect_review_entries_for_asin(site: str, asin: str, pages_per_asin: int) 
         if page > 1:
             break
 
+    detail_fallback_used = False
+    if not rows:
+        detail_url = _product_page_url(site, asin)
+        detail_attempts: list[dict[str, Any]] = []
+        detail_source = ""
+        detail_page_issue = None
+
+        for source in source_candidates:
+            attempt: dict[str, Any] = {
+                "source": source,
+                "parsed_entries": 0,
+                "error": None,
+                "page_issue": None,
+            }
+            try:
+                text = _fetch_review_page(detail_url, site=site, source=source, timeout=20, max_bytes=1_000_000)
+            except Exception as exc:  # noqa: BLE001
+                error_text = f"{type(exc).__name__}: {exc}"
+                attempt["error"] = error_text
+                if _is_not_found_error(exc):
+                    attempt["page_issue"] = "page_not_found"
+                else:
+                    attempt["page_issue"] = "network_error"
+                    network_errors += 1
+                detail_attempts.append(attempt)
+                continue
+
+            page_issue = classify_review_page(text)
+            if page_issue:
+                attempt["page_issue"] = page_issue
+                if page_issue == "blocked_page":
+                    blocked_pages += 1
+                detail_attempts.append(attempt)
+                detail_page_issue = page_issue
+                continue
+
+            parsed = parse_review_entries_from_product_html(text, limit=12)
+            attempt["parsed_entries"] = len(parsed)
+            detail_attempts.append(attempt)
+            if parsed:
+                detail_fallback_used = True
+                detail_source = source
+                rows.extend(parsed)
+                break
+            detail_page_issue = "parsed_zero"
+
+        if detail_attempts:
+            page_stats.append(
+                {
+                    "page": "product_detail",
+                    "source": detail_source or detail_attempts[-1].get("source"),
+                    "parsed_entries": len(rows),
+                    "error": None,
+                    "page_issue": None if rows else (detail_page_issue or "parsed_zero"),
+                    "sources_tried": detail_attempts,
+                }
+            )
+            if not rows and not errors:
+                if detail_page_issue == "blocked_page":
+                    errors.append("product detail blocked or robot check")
+                elif detail_page_issue == "page_not_found":
+                    errors.append("product detail page not found")
+                elif detail_page_issue == "parsed_zero":
+                    errors.append("product detail has no parseable review snippets")
+
     failure_reason = _classify_failure_reason(
         has_rows=bool(rows),
         blocked_pages=blocked_pages,
@@ -382,6 +468,7 @@ def _collect_review_entries_for_asin(site: str, asin: str, pages_per_asin: int) 
         "pages_attempted": pages_attempted,
         "pages_succeeded": pages_succeeded,
         "entries_parsed": len(rows),
+        "detail_fallback_used": detail_fallback_used,
         "status": "ok" if rows else "failed",
         "failure_reason": failure_reason,
         "errors": errors,
@@ -533,7 +620,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.strict and total_rows == 0:
         return 1
     if args.strict_review_topics and len(final_review_topics) <= 0:
-        if _external_review_failures_only(final_diagnostics):
+        allow_external_bypass = str(os.environ.get("AMAZON_REVIEW_ALLOW_EXTERNAL_BYPASS", "1") or "1").strip() == "1"
+        if allow_external_bypass and _external_review_failures_only(final_diagnostics):
             print(
                 "[review-fetch] strict-review-topics bypassed: only external failures "
                 "(blocked/network/page_not_found) detected in this run."

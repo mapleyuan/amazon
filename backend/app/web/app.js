@@ -1288,6 +1288,39 @@ function buildReviewInsightLinesFromOfficial(officialPayload, asin) {
   ].filter(Boolean);
 }
 
+function buildReviewFailureLines(officialPayload, asin) {
+  const diagnostics = Array.isArray(officialPayload?.review_fetch_diagnostics)
+    ? officialPayload.review_fetch_diagnostics
+    : [];
+  if (!diagnostics.length) return [];
+
+  const normalizedAsin = String(asin || "").trim();
+  const diag = normalizedAsin
+    ? diagnostics.find((item) => String(item?.asin || "").trim() === normalizedAsin)
+    : diagnostics[0];
+  if (!diag || String(diag.status || "").trim() === "ok") return [];
+
+  const reasonRaw = String(diag.failure_reason || "").trim();
+  const reasonMap = {
+    blocked_page: "页面被风控拦截",
+    page_not_found: "评论页不存在或受限",
+    network_error: "网络或连接异常",
+    parsed_zero: "页面返回但未解析出评论",
+  };
+  const reasonLabel = reasonMap[reasonRaw] || reasonRaw || "未知";
+  const sourceCandidates = Array.isArray(diag.source_candidates) ? diag.source_candidates.join(" -> ") : "-";
+  const errors = Array.isArray(diag.errors) ? diag.errors.filter(Boolean).slice(0, 2) : [];
+
+  const lines = [
+    `评论抓取失败（ASIN ${diag.asin || asin || "-"}）：${reasonLabel}`,
+    `尝试来源: ${sourceCandidates}`,
+  ];
+  if (errors.length) {
+    lines.push(`错误摘要: ${errors.join("；")}`);
+  }
+  return lines;
+}
+
 function parseInsightsSourceTags(source) {
   const value = String(source || "").trim();
   if (!value) return new Set();
@@ -1633,6 +1666,7 @@ async function runCompetitiveInsights() {
   const officialStyleTrendRows = buildStyleTrendRowsFromOfficial(officialPayload, 12);
   const officialStyleLines = buildStyleTrendLinesFromOfficial(officialPayload);
   const reviewDetail = buildReviewDetailFromOfficial(officialPayload, selectedAsin);
+  const reviewFailureLines = buildReviewFailureLines(officialPayload, selectedAsin);
   const keywordFromPublicSearch = isPublicSearchKeywordRows(officialPayload);
   const hasKeywordData =
     officialKeywordInsights.trafficRows.length > 0 || officialKeywordInsights.conversionRows.length > 0;
@@ -1652,7 +1686,11 @@ async function runCompetitiveInsights() {
 
   renderInsightList(
     "reviewInsights",
-    officialReviewLines.length ? officialReviewLines : ["暂无真实评论主题数据。"],
+    officialReviewLines.length
+      ? officialReviewLines
+      : reviewFailureLines.length
+        ? reviewFailureLines
+        : ["暂无真实评论主题数据。"],
   );
   renderReviewDeepDive(reviewDetail);
   renderKeywordMetrics(

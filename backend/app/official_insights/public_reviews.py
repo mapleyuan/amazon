@@ -106,6 +106,32 @@ def _extract_rating(line: str) -> tuple[float | None, int]:
     return None, -1
 
 
+def _extract_last_rating(line: str) -> float | None:
+    text = str(line or "")
+    candidates: list[tuple[int, float]] = []
+
+    for pattern in _STAR_PATTERNS:
+        for match in pattern.finditer(text):
+            raw = str(match.group(1) or "").replace(",", ".")
+            try:
+                rating = float(raw)
+            except ValueError:
+                continue
+            if 1.0 <= rating <= 5.0:
+                candidates.append((int(match.end()), rating))
+
+    for match in _STAR_GLYPH_RE.finditer(text):
+        value = match.group(0)
+        filled = value.count("★") + value.count("⭐")
+        if 1 <= filled <= 5:
+            candidates.append((int(match.end()), float(filled)))
+
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: item[0])
+    return candidates[-1][1]
+
+
 def classify_review_page(text: str) -> str | None:
     normalized = _clean_line(str(text or ""))
     if not normalized:
@@ -182,6 +208,78 @@ def parse_review_entries(text: str) -> list[dict[str, Any]]:
                 }
             )
         idx = max(next_idx, idx + 1)
+
+    return entries
+
+
+def parse_review_entries_from_product_html(text: str, *, limit: int = 12) -> list[dict[str, Any]]:
+    """
+    Parse embedded review snippets from product detail HTML.
+    This is a fallback when dedicated review pages are blocked.
+    """
+    html_text = str(text or "")
+    if not html_text:
+        return []
+
+    entries: list[dict[str, Any]] = []
+    seen_texts: set[str] = set()
+
+    body_pattern = re.compile(
+        r'data-hook="review-body"[^>]*>(.*?)</(?:span|div)>',
+        re.IGNORECASE | re.DOTALL,
+    )
+    title_pattern = re.compile(
+        r'data-hook="review-title"[^>]*>(.*?)</(?:a|span)>',
+        re.IGNORECASE | re.DOTALL,
+    )
+    rating_pattern = re.compile(
+        r'data-hook="(?:review-star-rating|cmps-review-star-rating)"[^>]*>(.*?)</(?:i|span)>',
+        re.IGNORECASE | re.DOTALL,
+    )
+
+    for match in body_pattern.finditer(html_text):
+        body_raw = match.group(1)
+        body = _clean_line(body_raw)
+        if not body:
+            continue
+
+        window_start = max(0, match.start() - 1600)
+        window_end = min(len(html_text), match.end() + 400)
+        window = html_text[window_start:window_end]
+        local_before = html_text[max(0, match.start() - 700):match.start()]
+
+        title = ""
+        title_match = title_pattern.search(window)
+        if title_match:
+            title = _clean_line(title_match.group(1))
+
+        rating = None
+        rating_matches = list(rating_pattern.finditer(local_before))
+        if rating_matches:
+            rating_text = _clean_line(rating_matches[-1].group(1))
+            rating = _extract_rating(rating_text)[0]
+        if rating is None:
+            rating = _extract_last_rating(_clean_line(local_before))
+        if rating is None:
+            rating = _extract_last_rating(_clean_line(window))
+
+        full_text = " ".join(part for part in [title, body] if part).strip()
+        if not full_text:
+            continue
+        normalized = full_text.lower()
+        if normalized in seen_texts:
+            continue
+        seen_texts.add(normalized)
+
+        entries.append(
+            {
+                "rating": rating,
+                "title": title,
+                "text": full_text,
+            }
+        )
+        if len(entries) >= max(1, int(limit)):
+            break
 
     return entries
 

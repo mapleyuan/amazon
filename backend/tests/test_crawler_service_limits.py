@@ -21,6 +21,8 @@ class CrawlerServiceLimitTests(unittest.TestCase):
             crawl_category_limit=2,
             crawl_source="direct",
             crawl_proxy_template="",
+            crawl_cookie="",
+            crawl_referer="",
         )
 
         parsed_items = [
@@ -69,6 +71,8 @@ class CrawlerServiceLimitTests(unittest.TestCase):
             crawl_category_limit=5,
             crawl_source="direct",
             crawl_proxy_template="",
+            crawl_cookie="",
+            crawl_referer="",
         )
 
         parsed_items = [
@@ -120,6 +124,8 @@ class CrawlerServiceLimitTests(unittest.TestCase):
             crawl_category_limit=5,
             crawl_source="direct",
             crawl_proxy_template="",
+            crawl_cookie="",
+            crawl_referer="",
         )
 
         parsed_items = [

@@ -14,8 +14,14 @@ jobs:
     timeout-minutes: 25
     env:
       AMAZON_CRAWL_CATEGORY_LIMIT: "5"
+      AMAZON_DETAIL_ENRICH_LIMIT: "30"
       AMAZON_MOCK_CRAWL: "0"
       AMAZON_CRAWL_SOURCE: "jina_ai"
+      AMAZON_CRAWL_PROXY_TEMPLATE: ${{ secrets.AMAZON_CRAWL_PROXY_TEMPLATE }}
+      AMAZON_CRAWL_COOKIE: ${{ secrets.AMAZON_CRAWL_COOKIE }}
+      AMAZON_CRAWL_REFERER: ${{ secrets.AMAZON_CRAWL_REFERER }}
+      AMAZON_REVIEW_COOKIES_JSON: ${{ secrets.AMAZON_REVIEW_COOKIES_JSON }}
+      AMAZON_REVIEW_ALLOW_EXTERNAL_BYPASS: "0"
       AMAZON_SPAPI_CLIENT_ID: ${{ secrets.AMAZON_SPAPI_CLIENT_ID }}
       AMAZON_SPAPI_CLIENT_SECRET: ${{ secrets.AMAZON_SPAPI_CLIENT_SECRET }}
       AMAZON_SPAPI_REFRESH_TOKEN: ${{ secrets.AMAZON_SPAPI_REFRESH_TOKEN }}
@@ -150,6 +156,11 @@ jobs:
         env:
           AMAZON_CRAWL_SOURCE: direct
           AMAZON_REVIEW_PLAYWRIGHT: "1"
+          AMAZON_CRAWL_PROXY_TEMPLATE: ${{ secrets.AMAZON_CRAWL_PROXY_TEMPLATE }}
+          AMAZON_CRAWL_COOKIE: ${{ secrets.AMAZON_CRAWL_COOKIE }}
+          AMAZON_CRAWL_REFERER: ${{ secrets.AMAZON_CRAWL_REFERER }}
+          AMAZON_REVIEW_COOKIES_JSON: ${{ secrets.AMAZON_REVIEW_COOKIES_JSON }}
+          AMAZON_REVIEW_ALLOW_EXTERNAL_BYPASS: "0"
         run: |
           cd backend
           python3 -m pip install --quiet --upgrade pip
@@ -159,7 +170,7 @@ jobs:
             --snapshot-date "${{ steps.generate.outputs.snapshot_date }}" \
             --site amazon.com \
             --asin-limit 8 \
-            --pages-per-asin 1 \
+            --pages-per-asin 2 \
             --strict-review-topics
 
       - name: Build public keyword insights (free fallback)

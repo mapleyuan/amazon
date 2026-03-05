@@ -31,7 +31,7 @@
 4. 当前配置为长期保留历史（`retention_days=0`）。
 5. 若当天抓取失败，保留最近一次成功数据并在 `manifest` 中标记 `status=stale`。
 
-## 洞察数据（真实报表优先，免费评论兜底）
+## 洞察数据（真实报表优先，公开抓取补充）
 
 前端“竞品洞察”模块会优先读取：
 
@@ -44,7 +44,7 @@ cd backend
 python3 scripts/refresh_official_insights.py --snapshot-date 2026-03-03
 ```
 
-若没有官方报表文件，工作流会自动尝试“免费公开评论抓取”生成评论痛点洞察；其余维度回退到估算模式。
+若没有官方报表文件，工作流会自动尝试“公开页面抓取”补充评论与关键词；抓不到时前端会明确显示“暂无真实数据”，不再展示估算评论明细。
 
 默认会尝试获取：
 
@@ -66,7 +66,16 @@ python3 scripts/refresh_public_review_insights.py --snapshot-date 2026-03-03 --s
 - 包含更多评论字段：`avg_rating`、`rating_distribution`、`sentiment`、`positive_snippets`、`negative_snippets`
 - 包含抓取诊断字段：`review_fetch_diagnostics`（每个 ASIN 的抓取页数、错误原因、解析结果）
 
-工作流默认启用 `--strict-review-topics`：若当日 `review_topic_asins=0`，任务直接失败并告警，避免误以为评论明细已抓取成功。
+工作流默认启用 `--strict-review-topics`，并关闭“外部失败自动放行”：
+- `AMAZON_REVIEW_ALLOW_EXTERNAL_BYPASS=0`
+
+这样当当日评论真实抓取失败（例如 `blocked_page`/`page_not_found`）时任务会失败并告警，避免把“无真实评论”误判为成功。
+
+为提升免费抓取成功率，建议在仓库 Secrets 配置：
+- `AMAZON_CRAWL_PROXY_TEMPLATE`（可选，需包含 `{url}`）
+- `AMAZON_CRAWL_COOKIE`（可选，浏览器 Cookie 串）
+- `AMAZON_CRAWL_REFERER`（可选）
+- `AMAZON_REVIEW_COOKIES_JSON`（可选，Playwright `context.add_cookies` 格式）
 
 另外，免费关键词流量/转化近似可用：
 

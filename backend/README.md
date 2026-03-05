@@ -38,7 +38,11 @@ Static web UI lives in `backend/app/web/` and is split into:
 - `AMAZON_CRAWL_CATEGORY_LIMIT`: category crawl limit per site+board (default `20`)
 - `AMAZON_CRAWL_SOURCE`: crawl source strategy (`direct`, `jina_ai`, or `proxy_template`, default `direct`)
 - `AMAZON_CRAWL_PROXY_TEMPLATE`: used when `AMAZON_CRAWL_SOURCE=proxy_template`; must contain `{url}`
+- `AMAZON_CRAWL_COOKIE`: optional raw `Cookie` header for HTTP fetch
+- `AMAZON_CRAWL_REFERER`: optional `Referer` header for HTTP fetch
 - `AMAZON_REVIEW_PLAYWRIGHT`: `1` enables browser fallback source (`playwright`) for review pages.
+- `AMAZON_REVIEW_COOKIES_JSON`: optional JSON array passed to Playwright `context.add_cookies`
+- `AMAZON_REVIEW_ALLOW_EXTERNAL_BYPASS`: `0` disables strict-review external-failure bypass (default `1`)
 
 ## Publish static data with fine-grained category targeting
 

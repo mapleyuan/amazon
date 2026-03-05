@@ -106,6 +106,8 @@ def _settings(*, source: str, proxy_template: str = "") -> Settings:
         crawl_category_limit=20,
         crawl_source=source,
         crawl_proxy_template=proxy_template,
+        crawl_cookie="",
+        crawl_referer="",
     )
 
 

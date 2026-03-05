@@ -17,6 +17,8 @@ class Settings:
     crawl_category_limit: int
     crawl_source: str
     crawl_proxy_template: str
+    crawl_cookie: str
+    crawl_referer: str
 
 
 def get_settings() -> Settings:
@@ -32,4 +34,6 @@ def get_settings() -> Settings:
         crawl_category_limit=int(os.environ.get("AMAZON_CRAWL_CATEGORY_LIMIT", "20")),
         crawl_source=os.environ.get("AMAZON_CRAWL_SOURCE", "direct"),
         crawl_proxy_template=os.environ.get("AMAZON_CRAWL_PROXY_TEMPLATE", ""),
+        crawl_cookie=os.environ.get("AMAZON_CRAWL_COOKIE", ""),
+        crawl_referer=os.environ.get("AMAZON_CRAWL_REFERER", ""),
     )

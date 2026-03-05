@@ -398,6 +398,58 @@ Sturdy and elegant.
             self.assertEqual(diagnostics["entries_parsed"], 1)
             self.assertEqual(diagnostics["failure_reason"], None)
 
+    def test_main_uses_product_detail_fallback_when_review_page_parsed_zero(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            web_data = base / "web-data"
+            daily_dir = web_data / "daily"
+            insights_dir = web_data / "insights"
+            daily_dir.mkdir(parents=True, exist_ok=True)
+            insights_dir.mkdir(parents=True, exist_ok=True)
+
+            (daily_dir / "2026-03-03.json").write_text(
+                json.dumps({"snapshot_date": "2026-03-03", "items": [{"asin": "B000000001", "rank": 1}]}),
+                encoding="utf-8",
+            )
+
+            review_parsed_zero = "Customer reviews content loaded, but without parseable rating rows."
+            product_html = """
+<div data-hook="review">
+  <a data-hook="review-title"><span>Looks premium</span></a>
+  <i data-hook="review-star-rating"><span>5.0 out of 5 stars</span></i>
+  <span data-hook="review-body"><span>Beautiful finish and sturdy base.</span></span>
+</div>
+"""
+
+            def _fake_fetch(url: str, **kwargs: object) -> str:
+                if "/product-reviews/" in url:
+                    return review_parsed_zero
+                if "/dp/B000000001" in url:
+                    return product_html
+                return review_parsed_zero
+
+            with patch.object(refresh_public_review_insights, "WEB_DATA_DIR", web_data):
+                with patch.object(refresh_public_review_insights, "fetch_html", side_effect=_fake_fetch):
+                    code = refresh_public_review_insights.main(
+                        [
+                            "--snapshot-date",
+                            "2026-03-03",
+                            "--asin-limit",
+                            "1",
+                            "--pages-per-asin",
+                            "1",
+                            "--insights-output-dir",
+                            str(insights_dir),
+                        ]
+                    )
+
+            self.assertEqual(code, 0)
+            payload = json.loads((insights_dir / "2026-03-03.json").read_text(encoding="utf-8"))
+            self.assertEqual(payload["stats"]["review_topic_asins"], 1)
+            diagnostics = payload["review_fetch_diagnostics"][0]
+            self.assertEqual(diagnostics["status"], "ok")
+            self.assertTrue(bool(diagnostics.get("detail_fallback_used")))
+
     def test_main_strict_bypasses_mixed_page_not_found_and_parsed_zero(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             base = Path(temp_dir)

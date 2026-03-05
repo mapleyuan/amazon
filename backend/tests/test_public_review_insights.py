@@ -6,6 +6,7 @@ from app.official_insights.public_reviews import (
     build_review_topic_summary,
     classify_review_page,
     parse_review_entries,
+    parse_review_entries_from_product_html,
 )
 
 
@@ -74,6 +75,26 @@ To discuss automated access to Amazon data please contact api-services-support@a
 """
         self.assertEqual(classify_review_page(blocked), "blocked_page")
         self.assertIsNone(classify_review_page("normal content with ratings and comments"))
+
+    def test_parse_review_entries_from_product_html(self) -> None:
+        html = """
+<div data-hook="review">
+  <a data-hook="review-title"><span>Looks premium</span></a>
+  <i data-hook="review-star-rating"><span>5.0 out of 5 stars</span></i>
+  <span data-hook="review-body"><span>Beautiful finish and sturdy base.</span></span>
+</div>
+<div data-hook="review">
+  <a data-hook="review-title"><span>Too fragile</span></a>
+  <i data-hook="review-star-rating"><span>1.0 out of 5 stars</span></i>
+  <span data-hook="review-body"><span>Arrived cracked and broke after one day.</span></span>
+</div>
+"""
+        rows = parse_review_entries_from_product_html(html, limit=5)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["rating"], 5.0)
+        self.assertIn("sturdy", rows[0]["text"].lower())
+        self.assertEqual(rows[1]["rating"], 1.0)
+        self.assertIn("cracked", rows[1]["text"].lower())
 
 
 if __name__ == "__main__":

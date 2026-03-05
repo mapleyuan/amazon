@@ -45,13 +45,18 @@ def fetch_html(url: str, *, site: str, timeout: int = 15, max_bytes: int = 600_0
         proxy_template=settings.crawl_proxy_template,
     )
 
-    request = Request(
-        fetch_url,
-        headers={
-            "User-Agent": DEFAULT_UA,
-            "Accept-Language": ACCEPT_LANG.get(site, "en-US,en;q=0.9"),
-        },
-    )
+    headers = {
+        "User-Agent": DEFAULT_UA,
+        "Accept-Language": ACCEPT_LANG.get(site, "en-US,en;q=0.9"),
+    }
+    cookie = str(settings.crawl_cookie or "").strip()
+    if cookie:
+        headers["Cookie"] = cookie
+    referer = str(settings.crawl_referer or "").strip()
+    if referer:
+        headers["Referer"] = referer
+
+    request = Request(fetch_url, headers=headers)
 
     chunk_size = 64 * 1024
     remaining = max(1, int(max_bytes))
