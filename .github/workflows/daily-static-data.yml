@@ -110,21 +110,7 @@ jobs:
           RESOLVED_DATE="${TODAY_UTC}"
 
           if [ ! -f "app/web/data/daily/${TODAY_UTC}.json" ]; then
-            LAST_SUCCESS_DATE="$(python3 - <<'PY'
-from pathlib import Path
-import json
-path = Path("app/web/data/manifest.json")
-if not path.exists():
-    print("")
-else:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        print("")
-    else:
-        print(str(payload.get("last_success_date") or "").strip())
-PY
-)"
+            LAST_SUCCESS_DATE="$(python3 -c 'from pathlib import Path; import json; p=Path(\"app/web/data/manifest.json\"); txt=p.read_text(encoding=\"utf-8\") if p.exists() else \"\"; obj=json.loads(txt) if txt else {}; print(str(obj.get(\"last_success_date\") or \"\").strip() if isinstance(obj, dict) else \"\")')"
             RESOLVED_DATE="${LAST_SUCCESS_DATE}"
           fi
 
