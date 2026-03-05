@@ -37,6 +37,7 @@ jobs:
           python-version: "3.12"
 
       - name: Generate static data
+        id: generate
         run: |
           set -euo pipefail
           cd backend
@@ -56,28 +57,89 @@ jobs:
               --strict
           }
 
+          run_publish_relaxed() {
+            local crawl_source="$1"
+            local category_flag="$2"
+            local category_value="$3"
+
+            AMAZON_CRAWL_SOURCE="${crawl_source}" python3 scripts/publish_static_data.py \
+              --source auto \
+              --retention-days 0 \
+              --sites amazon.com \
+              --boards best_sellers \
+              "${category_flag}" "${category_value}" \
+              --fail-on-mock
+          }
+
+          strict_ok="0"
+
           echo "Attempt 1/3: jina_ai + precise category URL"
           if run_publish \
             "jina_ai" \
             "--category-urls" \
             "http://www.amazon.com/Best-Sellers-Home-Kitchen-Candlestick-Holders/zgbs/home-garden/3734611/ref=zg_bs_nav_home-garden_4_3734591"; then
             echo "Primary crawl succeeded."
-            exit 0
+            strict_ok="1"
           fi
 
-          echo "Attempt 2/3: direct + precise category URL"
-          if run_publish \
-            "direct" \
-            "--category-urls" \
-            "http://www.amazon.com/Best-Sellers-Home-Kitchen-Candlestick-Holders/zgbs/home-garden/3734611/ref=zg_bs_nav_home-garden_4_3734591"; then
-            echo "Secondary crawl succeeded."
-            exit 0
+          if [ "${strict_ok}" = "0" ]; then
+            echo "Attempt 2/3: direct + precise category URL"
+            if run_publish \
+              "direct" \
+              "--category-urls" \
+              "http://www.amazon.com/Best-Sellers-Home-Kitchen-Candlestick-Holders/zgbs/home-garden/3734611/ref=zg_bs_nav_home-garden_4_3734591"; then
+              echo "Secondary crawl succeeded."
+              strict_ok="1"
+            fi
           fi
 
-          echo "Attempt 3/3: direct + category keywords fallback"
-          run_publish "direct" "--category-keywords" "candlestick,candle,home decor,home decoration"
+          if [ "${strict_ok}" = "0" ]; then
+            echo "Attempt 3/3: direct + category keywords fallback"
+            if run_publish "direct" "--category-keywords" "candlestick,candle,home decor,home decoration"; then
+              echo "Tertiary crawl succeeded."
+              strict_ok="1"
+            fi
+          fi
+
+          if [ "${strict_ok}" = "0" ]; then
+            echo "All strict attempts failed. Running relaxed fallback to keep stale manifest and historical data."
+            run_publish_relaxed "direct" "--category-keywords" "candlestick,candle,home decor,home decoration"
+          fi
+
+          TODAY_UTC="$(date -u +%F)"
+          RESOLVED_DATE="${TODAY_UTC}"
+
+          if [ ! -f "app/web/data/daily/${TODAY_UTC}.json" ]; then
+            LAST_SUCCESS_DATE="$(python3 - <<'PY'
+from pathlib import Path
+import json
+path = Path("app/web/data/manifest.json")
+if not path.exists():
+    print("")
+else:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        print("")
+    else:
+        print(str(payload.get("last_success_date") or "").strip())
+PY
+)"
+            RESOLVED_DATE="${LAST_SUCCESS_DATE}"
+          fi
+
+          if [ -n "${RESOLVED_DATE}" ] && [ -f "app/web/data/daily/${RESOLVED_DATE}.json" ]; then
+            echo "Using snapshot date: ${RESOLVED_DATE}"
+            echo "snapshot_date=${RESOLVED_DATE}" >> "${GITHUB_OUTPUT}"
+            echo "skip_followups=0" >> "${GITHUB_OUTPUT}"
+          else
+            echo "No daily snapshot available; skipping downstream insights refresh."
+            echo "snapshot_date=${TODAY_UTC}" >> "${GITHUB_OUTPUT}"
+            echo "skip_followups=1" >> "${GITHUB_OUTPUT}"
+          fi
 
       - name: Build official insights (optional)
+        if: steps.generate.outputs.skip_followups != '1'
         run: |
           missing=()
           for name in AMAZON_SPAPI_CLIENT_ID AMAZON_SPAPI_CLIENT_SECRET AMAZON_SPAPI_REFRESH_TOKEN AMAZON_SPAPI_AWS_ACCESS_KEY_ID AMAZON_SPAPI_AWS_SECRET_ACCESS_KEY; do
@@ -93,11 +155,12 @@ jobs:
 
           cd backend
           python3 scripts/refresh_official_insights.py \
-            --snapshot-date "$(date -u +%F)" \
+            --snapshot-date "${{ steps.generate.outputs.snapshot_date }}" \
             --marketplace-ids A1PA6795UKMFR9 \
             --lookback-days 30
 
       - name: Build public review insights (free fallback)
+        if: steps.generate.outputs.skip_followups != '1'
         env:
           AMAZON_CRAWL_SOURCE: direct
           AMAZON_REVIEW_PLAYWRIGHT: "1"
@@ -107,17 +170,18 @@ jobs:
           python3 -m pip install --quiet playwright
           python3 -m playwright install --with-deps chromium
           python3 scripts/refresh_public_review_insights.py \
-            --snapshot-date "$(date -u +%F)" \
+            --snapshot-date "${{ steps.generate.outputs.snapshot_date }}" \
             --site amazon.com \
             --asin-limit 8 \
             --pages-per-asin 1 \
             --strict-review-topics
 
       - name: Build public keyword insights (free fallback)
+        if: steps.generate.outputs.skip_followups != '1'
         run: |
           cd backend
           python3 scripts/refresh_public_keyword_insights.py \
-            --snapshot-date "$(date -u +%F)" \
+            --snapshot-date "${{ steps.generate.outputs.snapshot_date }}" \
             --site amazon.com \
             --keyword-limit 20
 

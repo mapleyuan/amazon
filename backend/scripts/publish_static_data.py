@@ -281,6 +281,12 @@ def main(argv: list[str] | None = None) -> int:
             retention_days=retention_days,
         )
         _cleanup_old_daily_files(available_dates)
+        print(
+            f"[publish-static] status=success snapshot_date={snapshot_date} "
+            f"rows={len(rows)} sites={','.join(sites)} boards={','.join(boards)} "
+            f"source={os.environ.get('AMAZON_CRAWL_SOURCE', 'direct')}",
+            file=sys.stderr,
+        )
     except Exception as exc:  # noqa: BLE001
         status = "stale"
         failure_code = _failure_code_from_exception(exc)
@@ -304,6 +310,13 @@ def main(argv: list[str] | None = None) -> int:
             retention_days=retention_days,
         )
         _cleanup_old_daily_files(available_dates)
+        print(
+            f"[publish-static] status=stale code={failure_code} reason={failure_reason} "
+            f"source={failure_context['crawl_source']} sites={','.join(sites)} boards={','.join(boards)} "
+            f"category_keywords={','.join(category_keywords) or '-'} "
+            f"category_urls={len(category_urls)}",
+            file=sys.stderr,
+        )
 
     manifest = build_manifest(
         generated_at=generated_at,
