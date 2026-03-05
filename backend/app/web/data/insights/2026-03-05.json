@@ -1,6 +1,6 @@
 {
   "snapshot_date": "2026-03-05",
-  "generated_at": "2026-03-05T08:55:17Z",
+  "generated_at": "2026-03-05T09:30:43Z",
   "source": "public_search_keywords",
   "keywords": [
     {
@@ -16,6 +16,18 @@
       "sponsored_count": 0
     },
     {
+      "keyword": "decorative",
+      "impressions": 200000,
+      "clicks": 1,
+      "purchases": 0,
+      "cvr": 0.0,
+      "result_count": 200000,
+      "top_asin_count": 0,
+      "top_asin_overlap": 0,
+      "overlap_sales_month": 0,
+      "sponsored_count": 5
+    },
+    {
       "keyword": "gift",
       "impressions": 200000,
       "clicks": 16,
@@ -25,7 +37,7 @@
       "top_asin_count": 16,
       "top_asin_overlap": 0,
       "overlap_sales_month": 0,
-      "sponsored_count": 9
+      "sponsored_count": 1
     },
     {
       "keyword": "holder",
@@ -38,6 +50,18 @@
       "top_asin_overlap": 0,
       "overlap_sales_month": 0,
       "sponsored_count": 5
+    },
+    {
+      "keyword": "holders",
+      "impressions": 200000,
+      "clicks": 16,
+      "purchases": 0,
+      "cvr": 0.0,
+      "result_count": 200000,
+      "top_asin_count": 16,
+      "top_asin_overlap": 0,
+      "overlap_sales_month": 0,
+      "sponsored_count": 8
     },
     {
       "keyword": "vintage",
@@ -85,19 +109,7 @@
       "top_asin_count": 16,
       "top_asin_overlap": 0,
       "overlap_sales_month": 0,
-      "sponsored_count": 5
-    },
-    {
-      "keyword": "holders",
-      "impressions": 100000,
-      "clicks": 16,
-      "purchases": 0,
-      "cvr": 0.0,
-      "result_count": 100000,
-      "top_asin_count": 16,
-      "top_asin_overlap": 0,
-      "overlap_sales_month": 0,
-      "sponsored_count": 16
+      "sponsored_count": 3
     },
     {
       "keyword": "housewarming",
@@ -109,7 +121,7 @@
       "top_asin_count": 16,
       "top_asin_overlap": 0,
       "overlap_sales_month": 0,
-      "sponsored_count": 11
+      "sponsored_count": 6
     },
     {
       "keyword": "metal",
@@ -133,7 +145,7 @@
       "top_asin_count": 16,
       "top_asin_overlap": 0,
       "overlap_sales_month": 0,
-      "sponsored_count": 12
+      "sponsored_count": 7
     },
     {
       "keyword": "table",
@@ -145,19 +157,19 @@
       "top_asin_count": 16,
       "top_asin_overlap": 0,
       "overlap_sales_month": 0,
-      "sponsored_count": 4
+      "sponsored_count": 9
     },
     {
       "keyword": "table centerpiece",
       "impressions": 100000,
-      "clicks": 16,
+      "clicks": 1,
       "purchases": 0,
       "cvr": 0.0,
       "result_count": 100000,
-      "top_asin_count": 16,
+      "top_asin_count": 0,
       "top_asin_overlap": 0,
       "overlap_sales_month": 0,
-      "sponsored_count": 18
+      "sponsored_count": 6
     },
     {
       "keyword": "taper",
@@ -169,19 +181,7 @@
       "top_asin_count": 16,
       "top_asin_overlap": 0,
       "overlap_sales_month": 0,
-      "sponsored_count": 13
-    },
-    {
-      "keyword": "pillar",
-      "impressions": 60000,
-      "clicks": 16,
-      "purchases": 0,
-      "cvr": 0.0,
-      "result_count": 60000,
-      "top_asin_count": 16,
-      "top_asin_overlap": 0,
-      "overlap_sales_month": 0,
-      "sponsored_count": 3
+      "sponsored_count": 5
     },
     {
       "keyword": "mantel",
@@ -193,39 +193,51 @@
       "top_asin_count": 16,
       "top_asin_overlap": 0,
       "overlap_sales_month": 0,
-      "sponsored_count": 10
+      "sponsored_count": 18
+    },
+    {
+      "keyword": "pillar",
+      "impressions": 40000,
+      "clicks": 16,
+      "purchases": 0,
+      "cvr": 0.0,
+      "result_count": 40000,
+      "top_asin_count": 16,
+      "top_asin_overlap": 0,
+      "overlap_sales_month": 0,
+      "sponsored_count": 6
     },
     {
       "keyword": "candlestick holders",
       "impressions": 10000,
       "clicks": 16,
-      "purchases": 7,
-      "cvr": 0.4375,
+      "purchases": 8,
+      "cvr": 0.5,
       "result_count": 10000,
       "top_asin_count": 16,
-      "top_asin_overlap": 7,
-      "overlap_sales_month": 6082,
-      "sponsored_count": 11
+      "top_asin_overlap": 8,
+      "overlap_sales_month": 6413,
+      "sponsored_count": 9
     },
     {
       "keyword": "candlestick",
       "impressions": 10000,
       "clicks": 16,
-      "purchases": 2,
-      "cvr": 0.125,
+      "purchases": 3,
+      "cvr": 0.1875,
       "result_count": 10000,
       "top_asin_count": 16,
-      "top_asin_overlap": 2,
-      "overlap_sales_month": 1587,
+      "top_asin_overlap": 3,
+      "overlap_sales_month": 4087,
       "sponsored_count": 5
     },
     {
       "keyword": "housewarming gift",
-      "impressions": 660,
+      "impressions": 649,
       "clicks": 16,
       "purchases": 0,
       "cvr": 0.0,
-      "result_count": 660,
+      "result_count": 649,
       "top_asin_count": 16,
       "top_asin_overlap": 0,
       "overlap_sales_month": 0,
@@ -236,7 +248,7 @@
   "review_topics": [],
   "style_trends": [],
   "stats": {
-    "keyword_rows": 19,
+    "keyword_rows": 20,
     "monthly_sales_rows": 0,
     "review_topic_asins": 0,
     "style_trend_rows": 0
