@@ -1638,7 +1638,7 @@ async function runCompetitiveInsights() {
     officialKeywordInsights.trafficRows.length > 0 || officialKeywordInsights.conversionRows.length > 0;
   const hasReviewData = officialReviewLines.length > 0 || Boolean(reviewDetail);
   const hasSalesData = officialMonthlyRows.length > 0 || officialCompetitorMonthlyRows.length > 0;
-  const hasStyleData = officialStyleLines.length > 0 || officialStyleTrendRows.length > 0;
+  const hasStyleData = officialStyleTrendRows.length > 0;
   const keywordTrafficLabel = keywordFromPublicSearch
     ? officialKeywordInsights.scope === "asin"
       ? "搜索结果量"
