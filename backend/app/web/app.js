@@ -346,7 +346,7 @@ function renderKeywordMetrics(containerId, rows, metricLabel) {
   }
 
   if (!rows.length) {
-    container.textContent = "样本不足，暂无关键词结果。";
+    container.textContent = "暂无真实关键词结果。";
     return;
   }
 
@@ -1334,14 +1334,29 @@ function isPublicSearchKeywordRows(payload) {
 function buildKeywordInsightRowsFromOfficial(officialPayload, asin = "") {
   const keywords = Array.isArray(officialPayload?.keywords) ? officialPayload.keywords : [];
   if (!keywords.length) {
-    return { trafficRows: [], conversionRows: [] };
+    return { trafficRows: [], conversionRows: [], scope: "none" };
   }
   const normalizedAsin = String(asin || "").trim();
-  const scopedKeywords = normalizedAsin
-    ? keywords.filter((item) => String(item.asin || "").trim() === normalizedAsin)
-    : keywords;
+  let scope = "all";
+  let scopedKeywords = keywords;
+  if (normalizedAsin) {
+    const asinRows = keywords.filter((item) => String(item.asin || "").trim() === normalizedAsin);
+    if (asinRows.length) {
+      scope = "asin";
+      scopedKeywords = asinRows;
+    } else {
+      const categoryRows = keywords.filter((item) => !String(item.asin || "").trim());
+      if (categoryRows.length) {
+        scope = "category";
+        scopedKeywords = categoryRows;
+      } else {
+        scope = "none";
+        scopedKeywords = [];
+      }
+    }
+  }
   if (!scopedKeywords.length) {
-    return { trafficRows: [], conversionRows: [] };
+    return { trafficRows: [], conversionRows: [], scope };
   }
 
   const trafficRows = [...scopedKeywords]
@@ -1371,7 +1386,7 @@ function buildKeywordInsightRowsFromOfficial(officialPayload, asin = "") {
       itemCount: parseNumber(item.purchases) || 0,
     }));
 
-  return { trafficRows, conversionRows };
+  return { trafficRows, conversionRows, scope };
 }
 
 function buildMonthlySalesRowsFromOfficial(officialPayload, asin) {
@@ -1619,6 +1634,21 @@ async function runCompetitiveInsights() {
   const officialStyleLines = buildStyleTrendLinesFromOfficial(officialPayload);
   const reviewDetail = buildReviewDetailFromOfficial(officialPayload, selectedAsin);
   const keywordFromPublicSearch = isPublicSearchKeywordRows(officialPayload);
+  const hasKeywordData =
+    officialKeywordInsights.trafficRows.length > 0 || officialKeywordInsights.conversionRows.length > 0;
+  const hasReviewData = officialReviewLines.length > 0 || Boolean(reviewDetail);
+  const hasSalesData = officialMonthlyRows.length > 0 || officialCompetitorMonthlyRows.length > 0;
+  const hasStyleData = officialStyleLines.length > 0 || officialStyleTrendRows.length > 0;
+  const keywordTrafficLabel = keywordFromPublicSearch
+    ? officialKeywordInsights.scope === "asin"
+      ? "搜索结果量"
+      : "类目搜索量"
+    : "曝光量";
+  const keywordConversionLabel = keywordFromPublicSearch
+    ? officialKeywordInsights.scope === "asin"
+      ? "匹配率"
+      : "匹配率(类目)"
+    : "转化率";
 
   renderInsightList(
     "reviewInsights",
@@ -1628,12 +1658,12 @@ async function runCompetitiveInsights() {
   renderKeywordMetrics(
     "trafficKeywords",
     officialKeywordInsights.trafficRows,
-    keywordFromPublicSearch ? "搜索结果量" : "曝光量",
+    keywordTrafficLabel,
   );
   renderKeywordMetrics(
     "conversionKeywords",
     officialKeywordInsights.conversionRows,
-    keywordFromPublicSearch ? "匹配率" : "转化率",
+    keywordConversionLabel,
   );
   renderMonthlySalesInsights(officialMonthlyRows, selectedAsin, "月销量");
   renderMonthlySalesCompetitorTable(officialCompetitorMonthlyRows, "真实月销量");
@@ -1644,16 +1674,20 @@ async function runCompetitiveInsights() {
   renderStyleTrendMonthlyTable(officialStyleTrendRows, "真实款式趋势");
 
   const missingSections = [];
-  if (!officialReviewRows) missingSections.push("评论");
-  if (!officialKeywordRows) missingSections.push("关键词");
-  if (!officialSalesRows) missingSections.push("月销量");
-  if (!officialStyleRows) missingSections.push("款式趋势");
+  if (!hasReviewData) missingSections.push("评论");
+  if (!hasKeywordData) missingSections.push("关键词");
+  if (!hasSalesData) missingSections.push("月销量");
+  if (!hasStyleData) missingSections.push("款式趋势");
 
   const scopeLabel = analysisScope === "single" && selectedAsin ? `单品 ${selectedAsin} | ` : "";
   const missingText = missingSections.length ? `；缺失：${missingSections.join("、")}` : "";
+  const keywordScopeText =
+    officialKeywordInsights.scope === "category"
+      ? "；关键词为类目级真实数据（该ASIN无单品关键词）"
+      : "";
   setText(
     "insightStatus",
-    `已完成真实数据分析：${scopeLabel}数据源 ${formatInsightsSourceLabel(officialPayload?.source)}（关键词 ${officialKeywordRows}，月销量 ${officialSalesRows}，评论主题 ${officialReviewRows}，款式趋势 ${officialStyleRows}）${missingText}。`,
+    `已完成真实数据分析：${scopeLabel}数据源 ${formatInsightsSourceLabel(officialPayload?.source)}（关键词 ${officialKeywordRows}，月销量 ${officialSalesRows}，评论主题 ${officialReviewRows}，款式趋势 ${officialStyleRows}）${missingText}${keywordScopeText}。`,
   );
 }
 
