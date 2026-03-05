@@ -1,0 +1,28 @@
+{
+  "snapshot_date": "2026-03-05",
+  "generated_at": "2026-03-05T07:12:23Z",
+  "source": "public_reviews+public_search_keywords",
+  "keywords": [
+    {
+      "keyword": "metal",
+      "impressions": 300000,
+      "clicks": 16,
+      "purchases": 0,
+      "cvr": 0.0,
+      "result_count": 300000,
+      "top_asin_count": 16,
+      "top_asin_overlap": 0,
+      "overlap_sales_month": 0,
+      "sponsored_count": 0
+    }
+  ],
+  "monthly_sales": [],
+  "review_topics": [],
+  "style_trends": [],
+  "stats": {
+    "keyword_rows": 1,
+    "monthly_sales_rows": 0,
+    "review_topic_asins": 0,
+    "style_trend_rows": 0
+  }
+}
