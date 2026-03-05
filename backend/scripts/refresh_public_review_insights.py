@@ -410,16 +410,37 @@ def _load_json(path: Path) -> dict[str, Any] | None:
 
 
 def _merge_source(existing_source: str, has_public_reviews: bool) -> str:
-    source = str(existing_source or "").strip() or "public_reviews"
-    if not has_public_reviews:
-        return source
-    if source in {"", "public_reviews"}:
-        return "public_reviews"
-    if source == "official_reports":
-        return "mixed_reports_public_reviews"
-    if source == "mixed_reports_public_reviews":
-        return source
-    return f"{source}+public_reviews"
+    raw = str(existing_source or "").strip()
+    tags = [part.strip() for part in raw.split("+") if part.strip()]
+    if not tags:
+        tags = ["public_reviews"] if has_public_reviews else []
+
+    normalized: list[str] = []
+    for tag in tags:
+        if tag == "mixed_reports_public_reviews":
+            normalized.extend(["official_reports", "public_reviews"])
+        else:
+            normalized.append(tag)
+
+    deduped: list[str] = []
+    for tag in normalized:
+        if tag not in deduped:
+            deduped.append(tag)
+
+    if has_public_reviews:
+        if "public_reviews" not in deduped:
+            deduped.append("public_reviews")
+    else:
+        deduped = [tag for tag in deduped if tag != "public_reviews"]
+
+    if "official_reports" in deduped and "public_reviews" in deduped:
+        # Keep backward-compatible aggregate marker for mixed sources.
+        deduped = [tag for tag in deduped if tag not in {"official_reports", "public_reviews"}]
+        deduped.insert(0, "mixed_reports_public_reviews")
+
+    if not deduped:
+        return "public_search_keywords" if "public_search_keywords" in raw else "unknown"
+    return "+".join(deduped)
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
